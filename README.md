@@ -1,4 +1,4 @@
-# PositiveConeRefinementSafety.jl
+# DualConeRefinementSafety.jl
 After cloning the reposotory, open a Julia REPL and type
 ```julia
 cd([location of the repository folder])

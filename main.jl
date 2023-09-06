@@ -130,7 +130,7 @@ current_cone = BitSet(1:length(verts))
 iter = 0
 print("Narrowing loop:")
 
-while iter < 100
+while iter < 100*0
     global iter += 1
     print("\nIter ", iter, ": ")
     i_to_remove = 0
@@ -163,7 +163,7 @@ while iter < 100
     end
 end
 verts = [verts[i] for i in current_cone]
-println("# generators after Narrowing: ", length(verts))
+println("\n# generators after Narrowing: ", length(verts))
 
 # Plot the positive set and vector field
 vals1_ = range(-2, 2, length=10)

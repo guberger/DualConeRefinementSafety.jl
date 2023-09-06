@@ -1,4 +1,4 @@
-name = "PositiveConeRefinementSafety"
+name = "DualConeRefinementSafety"
 uuid = "3c7ce3ce-cd65-4201-b8fe-e3513ad5bb0a"
 authors = ["guberger <guillaume.berger@colorado.edu>"]
 version = "0.1.0"
