@@ -1,7 +1,7 @@
 module ExampleRotating
 
 using LinearAlgebra
-using Symbolics
+using DynamicPolynomials
 using Polyhedra
 using CDDLib
 using MosekTools
@@ -14,13 +14,12 @@ include("../src/DualConeRefinementSafety.jl")
 const DCR = DualConeRefinementSafety
 
 # Create the variables for symbolic manipulation
-Symbolics.@variables x1, x2
-vars = [x1, x2]
+vars, = @polyvar x[1:2]
 f = [
-    +x2 + x1 - x1 * (x1^2 + x2^2),
-    -x1 + x2 - x2 * (x1^2 + x2^2),
+    +x[2] + x[1] - x[1] * (x[1]^2 + x[2]^2),
+    -x[1] + x[2] - x[2] * (x[1]^2 + x[2]^2),
 ]
-tmp = DCR.Template(vars, [1, x1^2, x1*x2, x2^2])
+tmp = DCR.Template(vars, [1, x[1]^2, x[1]*x[2], x[2]^2])
 λ = 1
 maxorder = 5
 
@@ -55,10 +54,7 @@ x2s_ = range(-2, 2, length=10)
 xs = collect(Iterators.product(x1s_, x2s_))[:]
 x1s = getindex.(xs, 1)
 x2s = getindex.(xs, 2)
-subs_ = Symbolics.substitute
-eval_(x) = Dict(zip(vc.tmp.vars, x))
-eval_(f::Num, x) = Symbolics.value(subs_(f, eval_(x)))
-dxs = [0.04*eval_.(f, (x,)) for x in xs]
+dxs = [0.04*[fi(vars=>x) for fi in f] for x in xs]
 dxs1 = getindex.(dxs, 1)
 dxs2 = getindex.(dxs, 2)
 plt = plot(xlabel="x1", ylabel="x2")
@@ -66,8 +62,8 @@ quiver!(x1s, x2s, quiver=(dxs1, dxs2))
 
 x1s_ = range(-2, 2, length=20)
 x2s_ = range(-2, 2, length=20)
-Fplot(x1, x2) = (fs = eval_.(vc.tmp.funcs, ((x1, x2),));
-                 maximum(c -> dot(c, fs), vc.gens))
+Fplot(x1, x2) = (gs = [g(vars=>[x1, x2]) for g in vc.tmp.funcs];
+                 maximum(c -> dot(c, gs), vc.gens))
 z = @. Fplot(x1s_', x2s_)
 contour!(x1s_, x2s_, z, levels=[0])
 display(plt)

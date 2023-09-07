@@ -1,7 +1,7 @@
 module TestMain
 
 using LinearAlgebra
-using Symbolics
+using DynamicPolynomials
 using CDDLib
 using CSDP
 using SumOfSquares
@@ -16,13 +16,12 @@ const DCR = DualConeRefinementSafety
 solver() = optimizer_with_attributes(CSDP.Optimizer, "printlevel"=>0)
 
 # Create the variables for symbolic manipulation
-Symbolics.@variables x1, x2
-vars = [x1, x2]
+vars, = @polyvar x[1:2]
 f = [
-    +x2 + x1 - x1 * (x1^2 + x2^2),
-    -x1 + x2 - x2 * (x1^2 + x2^2),
+    +x[2] + x[1] - x[1] * (x[1]^2 + x[2]^2),
+    -x[1] + x[2] - x[2] * (x[1]^2 + x[2]^2),
 ]
-tmp = DCR.Template(vars, [1, x1^2, x1*x2, x2^2])
+tmp = DCR.Template(vars, [1, x[1]^2, x[1]*x[2], x[2]^2])
 λ = 1
 maxorder = 5
 

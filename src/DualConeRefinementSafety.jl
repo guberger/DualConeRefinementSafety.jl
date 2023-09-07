@@ -3,30 +3,29 @@ module DualConeRefinementSafety
 greet() = print("Hello World!")
 
 using LinearAlgebra
-using Symbolics
 using Polyhedra
 using DynamicPolynomials
 using SumOfSquares
 
-struct Template
-    vars::Vector{Num}
-    funcs::Vector{Num}
+struct Template{VT<:Variable,FT<:AbstractPolynomialLike}
+    vars::Vector{VT}
+    funcs::Vector{FT}
 end
 
-struct HConeSubset
-    tmp::Template
+struct HConeSubset{TT<:Template}
+    tmp::TT
     supps::Vector{Vector{Float64}} # a' * coeffs ≤ 0
 end
 
 function _shifted_derivatives(tmp::Template,
-                              f::Vector{Num},
+                              f::Vector{<:AbstractPolynomialLike},
                               λ::Real,
                               maxorder::Int)
-    derivs_funcs::Vector{Vector{Num}} = [tmp.funcs]
-    op1_(g) = dot(Symbolics.gradient(g, tmp.vars), f) + λ * g
-    op2_(g) = Symbolics.simplify(op1_(g), expand=true)
+    T = promote_type(eltype(tmp.funcs), eltype(f), typeof(λ))
+    derivs_funcs::Vector{Vector{T}} = [convert.(T, tmp.funcs)]
+    op_(g)::T = convert(T, dot(differentiate.(g, tmp.vars), f) + λ * g)
     for i = 1:maxorder
-        push!(derivs_funcs, op2_.(derivs_funcs[i]))
+        push!(derivs_funcs, op_.(derivs_funcs[i]))
     end
     @assert length(derivs_funcs) == maxorder + 1
     @assert all(duncs -> length(duncs) == length(tmp.funcs), derivs_funcs)
@@ -34,29 +33,29 @@ function _shifted_derivatives(tmp::Template,
 end
 
 function hcone_from_points(tmp::Template,
-                           f::Vector{Num},
+                           f::Vector{<:AbstractPolynomialLike},
                            λ::Real,
                            maxorder::Int,
-                           points::Vector{<:AbstractVector{<:Real}})
+                           points::Union{AbstractSet,AbstractVector})
     nceoff = length(tmp.funcs)
     @assert nceoff > 0
     derivs_funcs = _shifted_derivatives(tmp, f, λ, maxorder)
     supps = Vector{Float64}[]
     for x in points
+        @assert eltype(x) <: Real
         @assert length(x) == length(tmp.vars)
-        valuation = Dict(zip(tmp.vars, x))
-        op_(g) = Symbolics.value(Symbolics.substitute(g, valuation))
+        op_(g)::Float64 = Float64(g(tmp.vars=>x))
         for duncs in derivs_funcs
             a = op_.(duncs)
             @assert length(a) == nceoff
-            push!(supps, float.(a))
+            push!(supps, a)
         end
     end
     return HConeSubset(tmp, supps)
 end
 
-struct VConeSubset
-    tmp::Template
+struct VConeSubset{TT<:Template}
+    tmp::TT
     gens::Vector{Vector{Float64}}
 end
 
@@ -74,47 +73,36 @@ function vcone_from_hcone(hc::HConeSubset, lib::Function)
     return VConeSubset(hc.tmp, gens)
 end
 
-struct SoSProblem{GT<:Polynomial,DT<:Polynomial}
+struct SoSProblem{GT<:AbstractPolynomialLike,DT<:AbstractPolynomialLike}
     indices::BitSet
     doms::Vector{GT}
     vals::Vector{DT}
 end
 
-function sos_problem_from_vcone(vc::VConeSubset, f::Vector{Num})
+function sos_problem_from_vcone(vc::VConeSubset, f::Vector{<:AbstractPolynomialLike})
     tmp = vc.tmp
-    op1_(g) = dot(Symbolics.gradient(g, tmp.vars), f)
-    op2_(g) = Symbolics.simplify(op1_(g), expand=true)
-    funcs = tmp.funcs
-    duncs = op2_.(funcs)
-    vars_dp, = @polyvar x[1:length(tmp.vars)]
-    T = typeof(1.0 + sum(vars_dp))
-    @assert length(tmp.vars) == length(vars_dp)
-    valuation = Dict(zip(tmp.vars, vars_dp))
-    op_(g)::T = Symbolics.value(Symbolics.substitute(g, valuation)) + zero(T)
-    funcs_dp = op_.(funcs)
-    duncs_dp = op_.(duncs)
-    doms = [dot(c, funcs_dp)::T for c in vc.gens]
-    vals = [dot(c, duncs_dp)::T for c in vc.gens]
+    T = promote_type(eltype(tmp.funcs), eltype(f), Float64)
+    op_(g)::T = convert(T, dot(differentiate.(g, tmp.vars), f))
+    funcs = convert.(T, tmp.funcs)
+    duncs = op_.(funcs)
+    doms = [dot(c, funcs)::T for c in vc.gens]
+    vals = [dot(c, duncs)::T for c in vc.gens]
     nvert = length(vc.gens)
     @assert length(doms) == length(vals) == nvert
     return SoSProblem(BitSet(1:nvert), doms, vals)
 end
 
-function check_positivity(f::Polynomial,
-                          hs::Vector{<:Polynomial},
+function check_positivity(f::AbstractPolynomialLike,
+                          hs::Vector{<:AbstractPolynomialLike},
                           indices::BitSet,
                           eqset::BitSet,
                           solver)
     S = FullSpace()
     for i in indices
-        if i in eqset
-            S = S ∩ (SemialgebraicSets.PolynomialEquality(hs[i]))
-        else
-            S = S ∩ (SemialgebraicSets.PolynomialInequality(hs[i]))
-        end
+        S = i ∈ eqset ? S ∩ @set(hs[i] == 0) : S ∩ @set(hs[i] ≤ 0)
     end
     model = SOSModel(solver())
-    @constraint(model, f ≥ 0, domain=S)
+    @constraint(model, f ≤ 0, domain=S)
     optimize!(model)
     return primal_status(model) == FEASIBLE_POINT
 end
@@ -141,7 +129,7 @@ function trim_vertices(sosprob::SoSProblem, solver;
     return i_bad
 end
 
-function narrow_vcone(vc::VConeSubset, f::Vector{Num},
+function narrow_vcone(vc::VConeSubset, f::Vector{<:AbstractPolynomialLike},
                       maxiter, solver;
                       callback_func=(args...) -> nothing)
     sosprob = sos_problem_from_vcone(vc, f)
