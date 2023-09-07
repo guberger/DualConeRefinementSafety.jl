@@ -1,42 +1,28 @@
 module SyntheticExample
 
+using LinearAlgebra
 using Symbolics
-using Polyhedra
-using CDDLib
+# Two options for computing vertices of a polyhedron
+# Choose between
+# - "CDDLib" (via Polyhedra.jl https://github.com/JuliaPolyhedra/Polyhedra.jl)
+# - "QHull" (via SciPy https://docs.scipy.org/doc/scipy/reference/spatial.html)
+const VERT_ENUM_METH = "CDDLib"
+@static if VERT_ENUM_METH == "CDDLib"
+    using Polyhedra
+    using CDDLib
+end
+@static if VERT_ENUM_METH == "QHull"
+    using PyCall
+    const spatial = pyimport_conda("scipy.spatial", "scipy")
+end
+using DynamicPolynomials
+using SumOfSquares
 using MosekTools
-# using Plots
-
-solver() = optimizer_with_attributes(Mosek.Optimizer, "QUIET"=>true)
-
-include("src/DualConeRefinementSafety.jl")
-const DCR = DualConeRefinementSafety
+using Plots
 
 # Create the variables for symbolic manipulation
 Symbolics.@variables x1, x2
-vars = [x1, x2]
-f = [
-    x1 - x1 * (x1^2 + x2^2),
-    x2 - x2 * (x1^2 + x2^2),
-]
-tmp = DCR.Template(vars, [1, 1.5*x1, x2, x1^2, x1*x2, x2^2])
-λ = 1
-maxorder = 5
-
-neval = 20
-rad = 0.5
-points = [[rad*cos(α), rad*sin(α)] for α in range(0, 2π, neval + 1)[1:neval]]
-hc = DCR.hcone_from_points(tmp, f, λ, maxorder, points)
-display(length(hc.lineqs))
-vc = DCR.vcone_from_hcone(hc, () -> CDDLib.Library())
-display(length(vc.gens))
-
-sosdom = DCR.sos_problem_from_vcone(vc, f)
-display(length(sosdom.gens))
-display(length(sosdom.derivs))
-i_bad = DCR.trim_vertices(sosdom, solver)
-display(i_bad)
-
-@assert false
+x = [x1, x2]
 
 # Just some helper functions
 subs_ = Symbolics.substitute
@@ -106,6 +92,7 @@ end
 verts = Vector{Float64}[]
 @static if VERT_ENUM_METH == "CDDLib"
     hr = hrep([HalfSpace(-con, 0) for con in all_cons])
+    display(hr)
     feasible_cone = polyhedron(hr, CDDLib.Library())
     @assert isempty(lines(feasible_cone))
     @assert length(points(feasible_cone)) == 1
