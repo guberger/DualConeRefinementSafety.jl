@@ -1,3 +1,5 @@
+module TestGreet
+
 using Test
 @static if isdefined(Main, :TestLocal)
     include("../src/DualConeRefinementSafety.jl")
@@ -12,3 +14,5 @@ end
     @test String(take!(stdout)) == "Hello World!"
     Base.stdout = stdout_old
 end
+
+end # module

@@ -15,7 +15,7 @@ end
 
 struct HConeSubset
     tmp::Template
-    lineqs::Vector{Vector{Float64}} # a' * coeffs ≤ 0
+    supps::Vector{Vector{Float64}} # a' * coeffs ≤ 0
 end
 
 function _shifted_derivatives(tmp::Template,
@@ -29,7 +29,7 @@ function _shifted_derivatives(tmp::Template,
         push!(derivs_funcs, op2_.(derivs_funcs[i]))
     end
     @assert length(derivs_funcs) == maxorder + 1
-    @assert all(dfuncs -> length(dfuncs) == length(tmp.funcs), derivs_funcs)
+    @assert all(duncs -> length(duncs) == length(tmp.funcs), derivs_funcs)
     return derivs_funcs
 end
 
@@ -41,18 +41,18 @@ function hcone_from_points(tmp::Template,
     nceoff = length(tmp.funcs)
     @assert nceoff > 0
     derivs_funcs = _shifted_derivatives(tmp, f, λ, maxorder)
-    lineqs = Vector{Float64}[]
+    supps = Vector{Float64}[]
     for x in points
         @assert length(x) == length(tmp.vars)
         valuation = Dict(zip(tmp.vars, x))
         op_(g) = Symbolics.value(Symbolics.substitute(g, valuation))
-        for dfuncs in derivs_funcs
-            a = op_.(dfuncs)
+        for duncs in derivs_funcs
+            a = op_.(duncs)
             @assert length(a) == nceoff
-            push!(lineqs, float.(a))
+            push!(supps, float.(a))
         end
     end
-    return HConeSubset(tmp, lineqs)
+    return HConeSubset(tmp, supps)
 end
 
 struct VConeSubset
@@ -61,10 +61,10 @@ struct VConeSubset
 end
 
 function vcone_from_hcone(hc::HConeSubset, lib::Function)
-    @assert !isempty(hc.lineqs)
+    @assert !isempty(hc.supps)
     @assert length(hc.tmp.funcs) > 0
-    @assert all(a -> length(a) == length(hc.tmp.funcs), hc.lineqs)
-    poly = polyhedron(hrep([HalfSpace(a, 0) for a in hc.lineqs]), lib())
+    @assert all(a -> length(a) == length(hc.tmp.funcs), hc.supps)
+    poly = polyhedron(hrep([HalfSpace(a, 0) for a in hc.supps]), lib())
     @assert isempty(lines(poly))
     @assert length(points(poly)) == 1
     @assert all(x -> norm(x) < 1e-6, points(poly))
@@ -75,9 +75,9 @@ function vcone_from_hcone(hc::HConeSubset, lib::Function)
 end
 
 struct SoSProblem{GT<:Polynomial,DT<:Polynomial}
-    nvert::Int
-    gens::Vector{GT}
-    derivs::Vector{DT}
+    indices::BitSet
+    doms::Vector{GT}
+    vals::Vector{DT}
 end
 
 function sos_problem_from_vcone(vc::VConeSubset, f::Vector{Num})
@@ -85,26 +85,33 @@ function sos_problem_from_vcone(vc::VConeSubset, f::Vector{Num})
     op1_(g) = dot(Symbolics.gradient(g, tmp.vars), f)
     op2_(g) = Symbolics.simplify(op1_(g), expand=true)
     funcs = tmp.funcs
-    dfuncs = op2_.(funcs)
+    duncs = op2_.(funcs)
     vars_dp, = @polyvar x[1:length(tmp.vars)]
+    T = typeof(1.0 + sum(vars_dp))
     @assert length(tmp.vars) == length(vars_dp)
     valuation = Dict(zip(tmp.vars, vars_dp))
-    op_(g) = Symbolics.value(Symbolics.substitute(g, valuation))
+    op_(g)::T = Symbolics.value(Symbolics.substitute(g, valuation)) + zero(T)
     funcs_dp = op_.(funcs)
-    dfuncs_dp = op_.(dfuncs)
-    gens = [dot(c, funcs_dp) for c in vc.gens]
-    derivs = [dot(c, dfuncs_dp) for c in vc.gens]
-    @assert length(gens) == length(derivs) == length(vc.gens)
-    return SoSProblem(length(vc.gens), gens, derivs)
+    duncs_dp = op_.(duncs)
+    doms = [dot(c, funcs_dp)::T for c in vc.gens]
+    vals = [dot(c, duncs_dp)::T for c in vc.gens]
+    nvert = length(vc.gens)
+    @assert length(doms) == length(vals) == nvert
+    return SoSProblem(BitSet(1:nvert), doms, vals)
 end
 
-function check_positivity(f, funcs_zero, funcs_pos, solver)
+function check_positivity(f::Polynomial,
+                          hs::Vector{<:Polynomial},
+                          indices::BitSet,
+                          eqset::BitSet,
+                          solver)
     S = FullSpace()
-    for h in funcs_zero
-        S = S ∩ (SemialgebraicSets.PolynomialEquality(h))
-    end
-    for g in funcs_pos
-        S = S ∩ (SemialgebraicSets.PolynomialInequality(g))
+    for i in indices
+        if i in eqset
+            S = S ∩ (SemialgebraicSets.PolynomialEquality(hs[i]))
+        else
+            S = S ∩ (SemialgebraicSets.PolynomialInequality(hs[i]))
+        end
     end
     model = SOSModel(solver())
     @constraint(model, f ≥ 0, domain=S)
@@ -112,45 +119,42 @@ function check_positivity(f, funcs_zero, funcs_pos, solver)
     return primal_status(model) == FEASIBLE_POINT
 end
 
-function trim_vertices(sosprob::SoSProblem, solver)
-    nvert = sosprob.nvert
+function trim_vertices(sosprob::SoSProblem, solver;
+                       callback_func=(args...) -> nothing)
+    indices = sosprob.indices
+    @assert !isempty(indices)
+    hs = sosprob.doms
+    eqset = BitSet()
     i_bad::Int = 0
-    for i = 1:nvert
-        f = sosprob.derivs[i]
-        funcs_zero = [sosprob.gens[i]]
-        funcs_pos = [sosprob.gens[j] for j = 1:nvert if j != i]
-        is_good = check_positivity(f, funcs_zero, funcs_pos, solver)
+    is_good = false
+    for (iter, i) in enumerate(indices)
+        empty!(eqset); push!(eqset, i)
+        f = sosprob.vals[i]
+        is_good = check_positivity(f, hs, indices, eqset, solver)
+        callback_func(iter, i, indices, is_good)
         if !is_good
             i_bad = i
             break
         end
     end
-    @assert 0 ≤ i_bad ≤ nvert
+    @assert i_bad == 0 || (is_good && i_bad ∈ indices)
     return i_bad
 end
 
-# function build_sos_domain(vc::VConeSubset, vars::Vector{Num})
-#     @polyvar vars_dp[1:length(vars)]
-#     @assert length(vars) == length(vars_dp)
-    
-#     valuation = Dict(zip(vars, vars_dp))
-#     dfuncs = op_(g) = dot(Symbolics.gradient(g, tmp.vars), f) + λ * g
-#     for i = 1:maxorder
-#         push!(derivs_funcs, [
-#             Symbolics.simplify(op_(g), expand=true) for g in derivs_funcs[i]
-#         ])
-#     end
-#     funcs_dp = Symbolics.value.(Symbolics.substitute.(vc.funcs, (valuation,)))
-#     set = FullSpace()
-#     for gen in vc.gens
-#         g_con = dot(gen, funcs_dp)
-#         set = set ∩ (SemialgebraicSets.PolynomialInequality(g_con))
-#     end
-#     return SoSDomain(vars, vars_dp, set)
-# end
-
-function g()
-    
+function narrow_vcone(vc::VConeSubset, f::Vector{Num},
+                      maxiter, solver;
+                      callback_func=(args...) -> nothing)
+    sosprob = sos_problem_from_vcone(vc, f)
+    iter = 0
+    success::Bool = false
+    while iter < maxiter && !success
+        iter += 1
+        callback_ = (args...) -> callback_func(iter, args...)
+        i_bad = trim_vertices(sosprob, solver, callback_func=callback_)
+        success = (i_bad == 0)
+        delete!(sosprob.indices, i_bad)
+    end
+    return VConeSubset(vc.tmp, [vc.gens[i] for i in sosprob.indices]), success
 end
 
 end # module
