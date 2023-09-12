@@ -12,137 +12,154 @@ struct Template{VT<:Variable,FT<:AbstractPolynomialLike}
     funcs::Vector{FT}
 end
 
-struct HConeSubset{TT<:Template}
+struct HConeSubset{TT<:Template,HT<:HalfSpace}
     tmp::TT
-    supps::Vector{Vector{Float64}} # a' * coeffs ≤ 0
+    halfspaces::Vector{HT} # h.a' * coeffs ≤ h.β
 end
 
-function _shifted_derivatives(tmp::Template,
-                              f::Vector{<:AbstractPolynomialLike},
-                              λ::Real,
-                              maxorder::Int)
-    T = promote_type(eltype(tmp.funcs), eltype(f), typeof(λ))
-    derivs_funcs::Vector{Vector{T}} = [convert.(T, tmp.funcs)]
-    op_(g)::T = convert(T, dot(differentiate.(g, tmp.vars), f) + λ * g)
-    for i = 1:maxorder
-        push!(derivs_funcs, op_.(derivs_funcs[i]))
-    end
-    @assert length(derivs_funcs) == maxorder + 1
-    @assert all(duncs -> length(duncs) == length(tmp.funcs), derivs_funcs)
-    return derivs_funcs
+function deriv_template(tmp::Template,
+                        f::Vector{<:AbstractPolynomialLike},
+                        λ::Real)
+    op_(g) = dot(differentiate.(g, tmp.vars), f) + λ * g
+    return [op_(g) for g in tmp.funcs]
 end
 
 function hcone_from_points(tmp::Template,
                            f::Vector{<:AbstractPolynomialLike},
                            λ::Real,
-                           maxorder::Int,
+                           ϵ::Real,
                            points::Union{AbstractSet,AbstractVector})
-    nceoff = length(tmp.funcs)
-    @assert nceoff > 0
-    derivs_funcs = _shifted_derivatives(tmp, f, λ, maxorder)
-    supps = Vector{Float64}[]
+    @assert length(tmp.funcs) > 0
+    dfuncs = deriv_template(tmp, f, λ)
+    halfspaces = HalfSpace{Float64,Vector{Float64}}[]
     for x in points
-        @assert eltype(x) <: Real
+        @assert x isa AbstractVector{<:Real}
         @assert length(x) == length(tmp.vars)
-        op_(g)::Float64 = Float64(g(tmp.vars=>x))
-        for duncs in derivs_funcs
-            a = op_.(duncs)
-            @assert length(a) == nceoff
-            push!(supps, a)
-        end
+        a = [g(tmp.vars=>x) for g in tmp.funcs]
+        push!(halfspaces, HalfSpace(a, ϵ))
+        a = [g(tmp.vars=>x) for g in dfuncs]
+        push!(halfspaces, HalfSpace(a, ϵ))
     end
-    return HConeSubset(tmp, supps)
+    return HConeSubset(tmp, halfspaces)
 end
 
 struct VConeSubset{TT<:Template}
     tmp::TT
-    gens::Vector{Vector{Float64}}
+    vertices::Vector{Vector{Float64}}
+    generators::Vector{Vector{Float64}}
 end
 
 function vcone_from_hcone(hc::HConeSubset, lib::Function)
-    @assert !isempty(hc.supps)
+    @assert !isempty(hc.halfspaces)
     @assert length(hc.tmp.funcs) > 0
-    @assert all(a -> length(a) == length(hc.tmp.funcs), hc.supps)
-    poly = polyhedron(hrep([HalfSpace(a, 0) for a in hc.supps]), lib())
+    @assert all(h -> length(h.a) == length(hc.tmp.funcs), hc.halfspaces)
+    poly = polyhedron(hrep(hc.halfspaces), lib())
     @assert isempty(lines(poly))
     @assert length(points(poly)) == 1
-    @assert all(x -> norm(x) < 1e-6, points(poly))
-    gens = collect(float.(r.a) for r in rays(poly))
-    @assert all(x -> norm(x) > 1e-6, gens)
-    normalize!.(gens)
-    return VConeSubset(hc.tmp, gens)
+    vertices = collect(float.(v) for v in points(poly))
+    generators = collect(float.(r.a) for r in rays(poly))
+    @assert all(r -> norm(r) > 1e-6, generators)
+    normalize!.(generators)
+    return VConeSubset(hc.tmp, vertices, generators)
 end
 
-struct SoSProblem{GT<:AbstractPolynomialLike,DT<:AbstractPolynomialLike}
-    indices::BitSet
-    doms::Vector{GT}
-    vals::Vector{DT}
+struct SoSConstraint{VT<:AbstractPolynomialLike,
+                     DT<:AbstractBasicSemialgebraicSet,
+                     ET<:Real}
+    vals::Vector{VT}
+    dom::DT
+    ϵ::ET
 end
 
-function sos_problem_from_vcone(vc::VConeSubset, f::Vector{<:AbstractPolynomialLike})
-    tmp = vc.tmp
-    T = promote_type(eltype(tmp.funcs), eltype(f), Float64)
-    op_(g)::T = convert(T, dot(differentiate.(g, tmp.vars), f))
-    funcs = convert.(T, tmp.funcs)
-    duncs = op_.(funcs)
-    doms = [dot(c, funcs)::T for c in vc.gens]
-    vals = [dot(c, duncs)::T for c in vc.gens]
-    nvert = length(vc.gens)
-    @assert length(doms) == length(vals) == nvert
-    return SoSProblem(BitSet(1:nvert), doms, vals)
-end
-
-function check_positivity(f::AbstractPolynomialLike,
-                          hs::Vector{<:AbstractPolynomialLike},
-                          indices::BitSet,
-                          eqset::BitSet,
-                          solver)
+function sos_domain_from_vcone(vc::VConeSubset)
     S = FullSpace()
-    for i in indices
-        S = i ∈ eqset ? S ∩ @set(hs[i] == 0) : S ∩ @set(hs[i] ≤ 0)
+    for c in vc.generators
+        S = S ∩ @set(dot(c, vc.tmp.funcs) ≤ 0)
     end
+    return S
+end
+
+function sos_domain_from_funcs(funcs::Vector{<:AbstractPolynomialLike})
+    S = FullSpace()
+    for g in funcs
+        S = S ∩ @set(g ≤ 0)
+    end
+    return S
+end
+
+struct SoSProblem{CT<:SoSConstraint}
+    ncoeff::Int
+    cons::Vector{CT}
+end
+
+function solve_sos_problem(sosprob::SoSProblem,
+                           c0::AbstractVector{<:Real},
+                           solver)
+    @assert length(c0) == sosprob.ncoeff
     model = SOSModel(solver())
-    @constraint(model, f ≤ 0, domain=S)
-    optimize!(model)
-    return primal_status(model) == FEASIBLE_POINT
-end
-
-function trim_vertices(sosprob::SoSProblem, solver;
-                       callback_func=(args...) -> nothing)
-    indices = sosprob.indices
-    @assert !isempty(indices)
-    hs = sosprob.doms
-    eqset = BitSet()
-    i_bad::Int = 0
-    is_good = false
-    for (iter, i) in enumerate(indices)
-        empty!(eqset); push!(eqset, i)
-        f = sosprob.vals[i]
-        is_good = check_positivity(f, hs, indices, eqset, solver)
-        callback_func(iter, i, indices, is_good)
-        if !is_good
-            i_bad = i
-            break
-        end
+    c = @variable(model, [1:sosprob.ncoeff])
+    @objective(model, Min, dot(c - c0, c - c0))
+    for con in sosprob.cons
+        @assert length(con.vals) == length(c)
+        f = dot(c, con.vals)
+        @constraint(model, f ≤ -con.ϵ, domain=con.dom)
     end
-    @assert i_bad == 0 || (is_good && i_bad ∈ indices)
-    return i_bad
+    optimize!(model)
+    @assert primal_status(model) == FEASIBLE_POINT
+    return value.(c), objective_value(model)
 end
 
-function narrow_vcone(vc::VConeSubset, f::Vector{<:AbstractPolynomialLike},
-                      maxiter, solver;
-                      callback_func=(args...) -> nothing)
-    sosprob = sos_problem_from_vcone(vc, f)
+function project_generators(generators::Vector{<:AbstractVector{<:Real}},
+                            sosprob::SoSProblem,
+                            solver;
+                            callback_func=(args...) -> nothing)
+    @assert !isempty(generators)
+    new_generators = Vector{Vector{Float64}}(undef, length(generators))
+    r_max::Float64 = -Inf
+    for (i, c0) in enumerate(generators)
+        c, r = solve_sos_problem(sosprob, c0, solver)
+        r_max = max(r, r_max)
+        callback_func(i, length(generators), r_max)
+        new_generators[i] = c
+    end
+    @assert r_max > -1e-6
+    return new_generators, r_max
+end
+
+function narrow_vcone!(vc::VConeSubset,
+                       funcs_init::Vector{<:AbstractPolynomialLike},
+                       f::Vector{<:AbstractPolynomialLike},
+                       λ::Real,
+                       ϵ::Real,
+                       δ::Real,
+                       maxiter,
+                       solver;
+                       callback_func=(args...) -> nothing)
+    ncoeff = length(vc.tmp.funcs)
+    dom_init = sos_domain_from_funcs(funcs_init)
+    con_init = SoSConstraint(vc.tmp.funcs, dom_init, ϵ)
+    dfuncs = deriv_template(vc.tmp, f, λ)
     iter = 0
     success::Bool = false
     while iter < maxiter && !success
         iter += 1
+        dom_deriv = sos_domain_from_vcone(vc)
+        con_deriv = SoSConstraint(dfuncs, dom_deriv, ϵ)
+        sosprob = SoSProblem(ncoeff, [con_init, con_deriv])
         callback_ = (args...) -> callback_func(iter, args...)
-        i_bad = trim_vertices(sosprob, solver, callback_func=callback_)
-        success = (i_bad == 0)
-        delete!(sosprob.indices, i_bad)
+        new_generators, r = project_generators(vc.generators,
+                                               sosprob,
+                                               solver,
+                                               callback_func=callback_)
+        if r < δ
+            success = true # exit
+        else
+            for (i, c) in enumerate(new_generators)
+                vc.generators[i] = normalize!(c)
+            end
+        end
     end
-    return VConeSubset(vc.tmp, [vc.gens[i] for i in sosprob.indices]), success
+    return success
 end
 
 end # module
