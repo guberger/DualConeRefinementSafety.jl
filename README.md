@@ -8,6 +8,6 @@ Pkg.instantiate() # install all depedencies of the project (requires a Mosek lic
 ```
 Run the example with
 ```julia
-include("examples/exa_rotating.jl")
+include("examples/[file in 'examples' folder]") # e.g., "examples/exa_rotating.jl"
 ```
 ![GUI](https://github.com/guberger/DualConeRefinementSafety.jl/blob/main/illustration.png)

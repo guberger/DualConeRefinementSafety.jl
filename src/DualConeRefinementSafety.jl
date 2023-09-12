@@ -92,20 +92,28 @@ struct SoSProblem{CT<:SoSConstraint}
     cons::Vector{CT}
 end
 
-function solve_sos_problem(sosprob::SoSProblem,
-                           c0::AbstractVector{<:Real},
-                           solver)
-    @assert length(c0) == sosprob.ncoeff
-    model = SOSModel(solver())
+function set_sos_optim(sosprob::SoSProblem, solver)
+    model = solver()
     c = @variable(model, [1:sosprob.ncoeff])
-    @objective(model, Min, dot(c - c0, c - c0))
     for con in sosprob.cons
         @assert length(con.vals) == length(c)
         f = dot(c, con.vals)
         @constraint(model, f ≤ -con.ϵ, domain=con.dom)
     end
+    return model, c
+end
+
+function solve_sos_optim(model::Model,
+                         c::AbstractVector{<:VariableRef},
+                         c0::AbstractVector{<:Real})
+    @assert length(c0) == length(c)
+    set_objective_sense(model, MOI.FEASIBILITY_SENSE) # workaround ...
+    @objective(model, Min, dot(c - c0, c - c0))
     optimize!(model)
-    @assert primal_status(model) == FEASIBLE_POINT
+    if primal_status(model) != FEASIBLE_POINT
+        display(solution_summary(model))
+        error("!FEASIBLE_POINT")
+    end
     return value.(c), objective_value(model)
 end
 
@@ -114,13 +122,14 @@ function project_generators(generators::Vector{<:AbstractVector{<:Real}},
                             solver;
                             callback_func=(args...) -> nothing)
     @assert !isempty(generators)
+    model, c = set_sos_optim(sosprob, solver)
     new_generators = Vector{Vector{Float64}}(undef, length(generators))
     r_max::Float64 = -Inf
     for (i, c0) in enumerate(generators)
-        c, r = solve_sos_problem(sosprob, c0, solver)
+        c_opt, r = solve_sos_optim(model, c, c0)
         r_max = max(r, r_max)
         callback_func(i, length(generators), r_max)
-        new_generators[i] = c
+        new_generators[i] = c_opt
     end
     @assert r_max > -1e-6
     return new_generators, r_max
@@ -155,6 +164,7 @@ function narrow_vcone!(vc::VConeSubset,
             success = true # exit
         else
             for (i, c) in enumerate(new_generators)
+                println(c)
                 vc.generators[i] = normalize!(c)
             end
         end

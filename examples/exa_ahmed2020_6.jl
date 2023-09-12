@@ -1,4 +1,6 @@
-module ExampleRotating
+module Example_Ahmed2020_6
+
+# Automated and Sound Synthesis of Lyapunov Functions with SMT Solvers
 
 using LinearAlgebra
 using DynamicPolynomials
@@ -7,9 +9,10 @@ using DifferentialEquations
 
 vars, = @polyvar x[1:2]
 f = [
-    +x[2] + x[1] - x[1] * (x[1]^2 + x[2]^2),
-    -x[1] + x[2] - x[2] * (x[1]^2 + x[2]^2),
+    -x[1]^3 + x[2],
+    -x[1] - x[2],
 ]
+display(f)
 funcs_init = [x[1]^2 + x[2]^2 - 1]
 
 x1s_ = range(-2, 2, length=10)
@@ -56,7 +59,7 @@ display(plt)
 include("../src/DualConeRefinementSafety.jl")
 const DCR = DualConeRefinementSafety
 
-tmp = DCR.Template(vars, [1, x[1]^2, x[1]*x[2], x[2]^2])
+tmp = DCR.Template(vars, [1, x[1]^2, x[2]^2])
 λ = 1.0
 ϵ = 1e-2
 hc = DCR.hcone_from_points(tmp, f, λ, ϵ, points)
@@ -69,14 +72,17 @@ display(length(vc.vertices))
 display(length(vc.generators))
 
 using SumOfSquares
-using MosekTools
-const opt_ = optimizer_with_attributes(Mosek.Optimizer, "QUIET"=>true)
 _DSOS_ = false
 if !_DSOS_
-    solver() = SOSModel(opt_)
+    using MosekTools
+    solver() = SOSModel(optimizer_with_attributes(Mosek.Optimizer, "QUIET"=>true))
 else
+    using Gurobi
+    const GUROBI_ENV = Gurobi.Env()
     solver() = begin
-        model = SOSModel(opt_)
+        model = SOSModel(optimizer_with_attributes(
+            () -> Gurobi.Optimizer(GUROBI_ENV), "OutputFlag"=>false)
+        )
         PolyJuMP.setdefault!(model, PolyJuMP.NonNegPoly, DSOSCone)
         return model
     end
@@ -107,8 +113,6 @@ end
 z = @. Fplot_vc(x1s_', x2s_)
 display(minimum(z))
 contour!(x1s_, x2s_, z, levels=[0], color=:green, lw=2)
-
-savefig("examples/figures/exa_rotating.png")
 
 display(plt)
 

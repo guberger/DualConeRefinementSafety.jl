@@ -1,4 +1,6 @@
-module ExampleRotating
+module Example_Ahmed2020_8
+
+# Automated and Sound Synthesis of Lyapunov Functions with SMT Solvers
 
 using LinearAlgebra
 using DynamicPolynomials
@@ -7,13 +9,14 @@ using DifferentialEquations
 
 vars, = @polyvar x[1:2]
 f = [
-    +x[2] + x[1] - x[1] * (x[1]^2 + x[2]^2),
-    -x[1] + x[2] - x[2] * (x[1]^2 + x[2]^2),
+    -x[1] - 1.5 * x[1]^2 * x[2]^3,
+    -x[2]^3 + 0.5 * x[1]^3 * x[2]^2,
 ]
-funcs_init = [x[1]^2 + x[2]^2 - 1]
+display(f)
+funcs_init = [x[1]^2 + x[2]^2 - 4]
 
-x1s_ = range(-2, 2, length=10)
-x2s_ = range(-2, 2, length=10)
+x1s_ = range(-4, 4, length=10)
+x2s_ = range(-4, 4, length=10)
 xs = collect(Iterators.product(x1s_, x2s_))[:]
 x1s = getindex.(xs, 1)
 x2s = getindex.(xs, 2)
@@ -29,8 +32,8 @@ function sys_map!(du, u, ::Any, ::Any)
     du[2] = f[2](vars=>u)
 end
 
-x1s_ = range(-2, 2, length=20)
-x2s_ = range(-2, 2, length=20)
+x1s_ = range(-4, 4, length=20)
+x2s_ = range(-4, 4, length=20)
 Fplot_init(x1, x2) = maximum(g(vars=>[x1, x2]) for g in funcs_init)
 z = @. Fplot_init(x1s_', x2s_)
 contour!(x1s_, x2s_, z, levels=[0])
@@ -38,7 +41,7 @@ contour!(x1s_, x2s_, z, levels=[0])
 nstep = 5
 dt = 1.0
 np = 10
-rad = 0.5
+rad = 2.0
 points = Vector{Float64}[]
 
 for α in range(0, 2π, np + 1)[1:np]
@@ -56,7 +59,7 @@ display(plt)
 include("../src/DualConeRefinementSafety.jl")
 const DCR = DualConeRefinementSafety
 
-tmp = DCR.Template(vars, [1, x[1]^2, x[1]*x[2], x[2]^2])
+tmp = DCR.Template(vars, [1, x[1]^2, x[2]^2])
 λ = 1.0
 ϵ = 1e-2
 hc = DCR.hcone_from_points(tmp, f, λ, ϵ, points)
@@ -69,14 +72,17 @@ display(length(vc.vertices))
 display(length(vc.generators))
 
 using SumOfSquares
-using MosekTools
-const opt_ = optimizer_with_attributes(Mosek.Optimizer, "QUIET"=>true)
-_DSOS_ = false
+_DSOS_ = true
 if !_DSOS_
-    solver() = SOSModel(opt_)
+    using MosekTools
+    solver() = SOSModel(optimizer_with_attributes(Mosek.Optimizer, "QUIET"=>true))
 else
+    using Gurobi
+    const GUROBI_ENV = Gurobi.Env()
     solver() = begin
-        model = SOSModel(opt_)
+        model = SOSModel(optimizer_with_attributes(
+            () -> Gurobi.Optimizer(GUROBI_ENV), "OutputFlag"=>false)
+        )
         PolyJuMP.setdefault!(model, PolyJuMP.NonNegPoly, DSOSCone)
         return model
     end
@@ -107,8 +113,6 @@ end
 z = @. Fplot_vc(x1s_', x2s_)
 display(minimum(z))
 contour!(x1s_, x2s_, z, levels=[0], color=:green, lw=2)
-
-savefig("examples/figures/exa_rotating.png")
 
 display(plt)
 
