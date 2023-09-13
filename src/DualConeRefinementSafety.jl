@@ -36,9 +36,9 @@ function hcone_from_points(tmp::Template,
         @assert x isa AbstractVector{<:Real}
         @assert length(x) == length(tmp.vars)
         a = [g(tmp.vars=>x) for g in tmp.funcs]
-        push!(halfspaces, HalfSpace(a, ϵ))
+        push!(halfspaces, HalfSpace(a, -ϵ))
         a = [g(tmp.vars=>x) for g in dfuncs]
-        push!(halfspaces, HalfSpace(a, ϵ))
+        push!(halfspaces, HalfSpace(a, -ϵ))
     end
     return HConeSubset(tmp, halfspaces)
 end
@@ -46,7 +46,17 @@ end
 struct VConeSubset{TT<:Template}
     tmp::TT
     vertices::Vector{Vector{Float64}}
-    generators::Vector{Vector{Float64}}
+end
+
+# Find λ > 0 such that norm(c + λ*v) = 1
+# I.e., norm(v)^2 * λ^2 + 2 * dot(c, v) * λ + norm(c)^2 = 1
+function normalize_shift!(v, c)
+    a1, a2, a3 = norm(v)^2, 2 * dot(v, c), norm(c)^2 - 1
+    Δ = a2^2 - 4 * a1 * a3
+    @assert Δ > a2^2
+    λ = (-a2 + sqrt(Δ)) / (2 * a1)
+    @assert λ > 0
+    map!((vi, ci) -> λ * vi + ci, v, v, c)
 end
 
 function vcone_from_hcone(hc::HConeSubset, lib::Function)
@@ -56,11 +66,13 @@ function vcone_from_hcone(hc::HConeSubset, lib::Function)
     poly = polyhedron(hrep(hc.halfspaces), lib())
     @assert isempty(lines(poly))
     @assert length(points(poly)) == 1
-    vertices = collect(float.(v) for v in points(poly))
-    generators = collect(float.(r.a) for r in rays(poly))
-    @assert all(r -> norm(r) > 1e-6, generators)
-    normalize!.(generators)
-    return VConeSubset(hc.tmp, vertices, generators)
+    center = float.(first(points(poly)))
+    @assert norm(center) < 1
+    vertices = collect(float.(r.a) for r in rays(poly))
+    @assert all(r -> norm(r) > 1e-6, vertices)
+    normalize_shift!.(vertices, (center,))
+    @assert all(c -> norm(c) ≈ 1, vertices)
+    return VConeSubset(hc.tmp, vertices)
 end
 
 struct SoSConstraint{VT<:AbstractPolynomialLike,
@@ -73,7 +85,7 @@ end
 
 function sos_domain_from_vcone(vc::VConeSubset)
     S = FullSpace()
-    for c in vc.generators
+    for c in vc.vertices
         S = S ∩ @set(dot(c, vc.tmp.funcs) ≤ 0)
     end
     return S
@@ -95,6 +107,7 @@ end
 function set_sos_optim(sosprob::SoSProblem, solver)
     model = solver()
     c = @variable(model, [1:sosprob.ncoeff])
+    @constraint(model, dot(c, c) ≤ 1)
     for con in sosprob.cons
         @assert length(con.vals) == length(c)
         f = dot(c, con.vals)
@@ -117,22 +130,22 @@ function solve_sos_optim(model::Model,
     return value.(c), objective_value(model)
 end
 
-function project_generators(generators::Vector{<:AbstractVector{<:Real}},
+function project_generators(vertices::Vector{<:AbstractVector{<:Real}},
                             sosprob::SoSProblem,
                             solver;
                             callback_func=(args...) -> nothing)
-    @assert !isempty(generators)
+    @assert !isempty(vertices)
     model, c = set_sos_optim(sosprob, solver)
-    new_generators = Vector{Vector{Float64}}(undef, length(generators))
+    new_vertices = Vector{Vector{Float64}}(undef, length(vertices))
     r_max::Float64 = -Inf
-    for (i, c0) in enumerate(generators)
+    for (i, c0) in enumerate(vertices)
         c_opt, r = solve_sos_optim(model, c, c0)
         r_max = max(r, r_max)
-        callback_func(i, length(generators), r_max)
-        new_generators[i] = c_opt
+        callback_func(i, length(vertices), r_max)
+        new_vertices[i] = c_opt
     end
     @assert r_max > -1e-6
-    return new_generators, r_max
+    return new_vertices, r_max
 end
 
 function narrow_vcone!(vc::VConeSubset,
@@ -156,16 +169,15 @@ function narrow_vcone!(vc::VConeSubset,
         con_deriv = SoSConstraint(dfuncs, dom_deriv, ϵ)
         sosprob = SoSProblem(ncoeff, [con_init, con_deriv])
         callback_ = (args...) -> callback_func(iter, args...)
-        new_generators, r = project_generators(vc.generators,
-                                               sosprob,
-                                               solver,
-                                               callback_func=callback_)
+        new_vertices, r = project_generators(vc.vertices,
+                                             sosprob,
+                                             solver,
+                                             callback_func=callback_)
         if r < δ
             success = true # exit
         else
-            for (i, c) in enumerate(new_generators)
-                println(c)
-                vc.generators[i] = normalize!(c)
+            for (i, c) in enumerate(new_vertices)
+                vc.vertices[i] = normalize!(c)
             end
         end
     end
