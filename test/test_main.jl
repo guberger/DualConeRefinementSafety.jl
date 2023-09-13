@@ -13,7 +13,7 @@ else
 end
 const DCR = DualConeRefinementSafety
 
-solver() = optimizer_with_attributes(CSDP.Optimizer, "printlevel"=>0)
+solver() = SOSModel(optimizer_with_attributes(CSDP.Optimizer, "printlevel"=>0))
 
 # Create the variables for symbolic manipulation
 vars, = @polyvar x[1:2]
@@ -22,7 +22,6 @@ f = [
     -x[1] + x[2] - x[2] * (x[1]^2 + x[2]^2),
 ]
 funcs_init = [x[1]^2 + x[2]^2 - 1]
-
 
 tmp = DCR.Template(vars, [1, x[1]^2, x[1]*x[2], x[2]^2])
 λ = 1.0
@@ -37,12 +36,12 @@ success = DCR.narrow_vcone!(vc, funcs_init, f, λ, ϵ, δ, Inf, solver)
 
 @testset "Main" begin
     @test success
-    @test all(c -> c[1] < 0, vc.generators)
+    @test all(c -> c[1] < 0, vc.vertices)
     np = 100
     for α in range(0, 2π, np + 1)[1:np]
         v = [cos(α), sin(α)]
         fv = (v[1]^2, v[1]*v[2], v[2]^2)
-        r = maximum(c -> -dot(c[2:4], fv) / c[1], vc.generators)
+        r = maximum(c -> -dot(c[2:4], fv) / c[1], vc.vertices)
         @test 1 < 1 / sqrt(r) < 2
     end
 end
