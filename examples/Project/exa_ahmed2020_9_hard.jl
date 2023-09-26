@@ -14,38 +14,40 @@ using MosekTools
 
 include("utils.jl")
 
-vars, = @polyvar x[1:4]
-f = [
+var, = @polyvar x[1:4]
+flow = [
     -x[1] + x[2]^3 - x[3] * x[4],
     -x[1] - x[2]^3,
     x[1] * x[4] - x[3],
     x[1] * x[3] - x[4]^2,
-]
-display(f)
+] * (x[3]^2 + 1)
+display(flow)
 rad = 2
-funcs_init = [x' * x - rad^2]
+dom_init = @set x' * x ≤ rad^2
 
 nstep = 5
 dt = 1.0
-np = 5
-points = generate_points(np, rad, dt, nstep, vars, f)
+np = 10
+vals = generate_vals(np, rad, dt, nstep, var, flow)
 
 include("../src/DualConeRefinementSafety.jl")
 const DCR = DualConeRefinementSafety
 
-tmp = DCR.Template(vars, [1, x[1]^2, x[2]^2, x[3]^2, x[4]^2])
+F = DCR.Field(var, flow)
+points = [DCR.Point(var, val) for val in vals]
+funcs = [1, x[1]^2, x[2]^2, x[3]^2, x[4]^2]
 λ = 1.0
 ϵ = 1e-2
-hc = DCR.hcone_from_points(tmp, f, λ, ϵ, points)
+hc = DCR.hcone_from_points(funcs, F, λ, ϵ, points)
 display(length(hc.halfspaces))
 
 vc = DCR.vcone_from_hcone(hc, () -> CDDLib.Library())
-display(length(vc.vertices))
+display(length(vc.rays))
 
 ϵ = 1e-2
 δ = 1e-4
 λ = 1.0
-success = DCR.narrow_vcone!(vc, funcs_init, f, λ, ϵ, δ, Inf, solver,
+success = DCR.narrow_vcone!(vc, dom_init, F, λ, ϵ, δ, Inf, solver,
                             callback_func=callback_func)
 display(success)
 

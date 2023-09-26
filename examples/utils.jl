@@ -1,21 +1,21 @@
-function generate_points(np, rad, dt, nstep, vars, f)
+function generate_vals(np, rad, dt, nstep, vars, flow)
     nvar = length(vars)
     F!(du, u, ::Any, ::Any) = begin
-        for (i, fi) in enumerate(f)
-            du[i] = fi(vars=>u)
+        for (i, f) in enumerate(flow)
+            du[i] = f(vars=>u)
         end
         nothing
     end
-    points = [zeros(nvar)]
+    vals = [zeros(nvar)]
     for _ = 1:np
         u0 = randn(nvar)
         normalize!(u0)
         lmul!(rad, u0)
         prob = ODEProblem(F!, u0, (0, nstep*dt))
         sol = solve(prob, saveat=dt)
-        append!(points, sol.u)
+        append!(vals, sol.u)
     end
-    return points
+    return vals
 end
 
 const opt_ = optimizer_with_attributes(Mosek.Optimizer, "QUIET"=>true)
