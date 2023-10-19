@@ -1,8 +1,7 @@
-module Example_Ahmed2020_9_Easy
+module Example_Ahmed2020_7
 
 # Automated and Sound Synthesis of Lyapunov Functions with SMT Solvers
-
-# OK
+# Example 7
 
 using LinearAlgebra
 using Random
@@ -14,32 +13,32 @@ using CDDLib
 using SumOfSquares
 using MosekTools
 
-include("../utils.jl")
+include("utils.jl")
 
-var, = @polyvar x[1:4]
+var, = @polyvar x[1:3]
+den = (x[3]^2 + 1)
 flow = [
-    -x[1] + x[2]^3 - 3 * x[3] * x[4],
-    -x[1] - x[2]^3,
-    x[1] * x[4] - x[3],
-    x[1] * x[3] - x[4]^3,
+    1 - (x[1]^3 + x[1] * x[3]^2) * den,
+    -(x[2] + x[1]^2 * x[2]) * den,
+    -3 * x[3] + (-x[3] + 3 * x[1]^2 * x[3]) * den,
 ]
 display(flow)
-rad = 2
+rad = 0.5
 dom_init = @set x' * x ≤ rad^2
 
 nstep = 5
-dt = 1.0
-np = 5
-vals = generate_vals(np, rad, dt, nstep, var, flow)
+dt = 0.25
+np = 20
+vals = generate_vals_on_ball(np, rad, dt, nstep, var, flow)
 
-include("../../src/DualConeRefinementSafety.jl")
+include("../src/DualConeRefinementSafety.jl")
 const DCR = DualConeRefinementSafety
 
 F = DCR.Field(var, flow)
 points = [DCR.Point(var, val) for val in vals]
-funcs = [1, x[1]^2, x[2]^2, x[3]^2, x[4]^2]
+funcs = [1, x[1]^2, x[2]^2, x[3]^2]
 λ = 1.0
-ϵ = 1e-2
+ϵ = 1e-1
 hc = DCR.hcone_from_points(funcs, F, λ, ϵ, points)
 display(length(hc.halfspaces))
 
@@ -52,6 +51,9 @@ success = DCR.narrow_vcone!(vc, dom_init, F, λ, ϵ, δ, Inf, solver,
 display(success)
 display(vc.funcs)
 display(vc.rays)
+DCR.simplify_vcone!(vc, 1e-5, solver)
+display(vc.rays)
+display([dot(r.a, vc.funcs) for r in vc.rays])
 
 model = solver()
 r = @variable(model)
