@@ -1,8 +1,6 @@
-module Example_Ahmed2020_11
+module Example_Linear
 
 # Automated and Sound Synthesis of Lyapunov Functions with SMT Solvers
-
-# Not working yet ...
 
 using LinearAlgebra
 using Random
@@ -18,8 +16,8 @@ include("../utils.jl")
 
 var, = @polyvar x[1:2]
 flow = [
-    -x[1] + 10 * x[2],
-    -x[1] - 10 * x[2]^3,
+    -x[1] + 4 * x[2],
+    -x[1] - 10 * x[2],
 ]
 display(flow)
 rad = 0.5
@@ -39,8 +37,8 @@ p2 = plot(xlabel="c1", ylabel="c2", zlabel="c3")
 scatter3d!(p2, [(0, 0, 0)], shape=:x, c=:black, ms=4, label="")
 quiver!(p1, x1s, x2s, quiver=(dxs1, dxs2))
 
-x1s_ = range(-2, 2, length=20)
-x2s_ = range(-2, 2, length=20)
+x1s_ = range(-2, 2, length=200)
+x2s_ = range(-2, 2, length=200)
 Fplot_init(x1, x2) = maximum(g(var=>[x1, x2]) for g in inequalities(dom_init))
 z = @. Fplot_init(x1s_', x2s_)
 contour!(p1, x1s_, x2s_, z, levels=[0])
@@ -60,22 +58,23 @@ const DCR = DualConeRefinementSafety
 
 F = DCR.Field(var, flow)
 points = [DCR.Point(var, val) for val in vals]
-funcs = [1, x[1]^2, x[2]^2]
-λ = 1.0
+funcs = [1, x[1], x[2]]
+λ = 10.0
 ϵ = 1e-2
 hc = DCR.hcone_from_points(funcs, F, λ, ϵ, points)
 display(length(hc.halfspaces))
 
 vc = DCR.vcone_from_hcone(hc, () -> CDDLib.Library())
 display(length(vc.rays))
-display(vc.rays)
 verts_plots = [[r.a[i] for r in vc.rays] for i = 1:3]
 scatter3d!(p2, verts_plots..., ms=4, label="")
 
 δ = 1e-4
-# success = DCR.narrow_vcone!(vc, dom_init, F, λ, ϵ, δ, Inf, solver,
-#                             callback_func=callback_func)
-# display(success)
+success = DCR.narrow_vcone!(vc, dom_init, F, λ, ϵ, δ, Inf, solver,
+                            callback_func=callback_func)
+display(success)
+display(vc.funcs)
+display(vc.rays)
 verts_plots = [[r.a[i] for r in vc.rays] for i = 1:3]
 scatter3d!(p2, verts_plots..., ms=4, label="")
 

@@ -83,8 +83,8 @@ function vcone_from_hcone(hc::HConeSubset, lib::Function)
     rays = collect(float.(r.a) for r in Polyhedra.rays(poly))
     @assert all(r -> norm(r) > 1e-6, rays)
     normalize_shift!.(rays, (center,))
-    @assert all(c -> norm(c) ≈ 1, rays)
-    return VConeSubset(hc.funcs, [Ray(c) for c in rays])
+    @assert all(r -> norm(r) ≈ 1, rays)
+    return VConeSubset(hc.funcs, [Ray(r) for r in rays])
 end
 
 struct SoSConstraint{VT<:AbstractPolynomialLike,
@@ -190,143 +190,83 @@ end
 
 crossprod(A, B) = unique(vec(map(x -> x[1] * x[2], Iterators.product(A, B))))
 
-const PT = DynamicPolynomials.Commutative{DynamicPolynomials.CreationOrder}
-const MT = Monomial{PT,Graded{LexOrder}}
-
-function _monomials(ps::Union{AbstractSet,AbstractVector})
-    @assert eltype(ps) <: AbstractPolynomialLike
-    monos = Set{MT}()
-    for p in ps
-        for mono in monomials(p)
-            push!(monos, mono)
-        end
-    end
-    return monos    
+struct FCone{VT<:Variable,GT<:AbstractPolynomialLike}
+    var::Vector{VT}
+    generators::Vector{GT}
 end
 
-function closure_cone(funcs::Vector{<:AbstractPolynomialLike},
-                      gens_init::Vector{<:AbstractPolynomialLike},
-                      ϵ::Real,
-                      gens_sos::Vector{<:AbstractPolynomialLike},
-                      lib)
+function init_cone(var::Vector{<:Variable},
+                   maxdeg::Int,
+                   gens_init::Vector{<:AbstractPolynomialLike},
+                   gens_sos::Vector{<:AbstractPolynomialLike},
+                   lib)
     crossgens = crossprod(gens_init, gens_sos)
     lmul!(-1, crossgens)
-    gens = vcat(funcs, crossgens, [Monomial(1)])
-    monos = collect(_monomials(gens))
+    base = monomials(var, 0:maxdeg)
+    gens = vcat(base, crossgens)
+    d = maximum(p -> maxdegree(p), gens, init=0)::Int
+    @assert d ≥ 0
+    monos = monomials(var, 0:d)
     nm = length(monos)
-    nf = length(funcs)
+    nb = length(base)
     ng = length(gens)
-    nrow, ncol = nm + ng, ng
-    A = zeros(nrow, ncol)
+    nrow = nm + ng - nb
+    T = coefficient_type(eltype(gens))
+    A = zeros(T, nrow, ng)
     for (i, g) in enumerate(gens)
-        io = nrow * (i - 1) + 1
-        copyto!(A, io, coefficients(g, monos))
+        k = nrow * (i - 1) + 1
+        copyto!(A, k, coefficients(g, monos))
     end
-    for i = (nf + 1):ng
-        A[nm + i, i] = -1
+    for i = 1:(ng - nb)
+        A[nm + i, nb + i] = -1
     end
-    b = zeros(nrow)
-    b[nm + ng] = -ϵ
+    b = zeros(T, nrow)
     hp = polyhedron(hrep(A, b, BitSet(1:nm)), lib())
-    poly = project(hp, 1:nf)
+    poly = project(hp, 1:nb)
     @assert isempty(lines(poly))
     @assert length(points(poly)) == 1
-    center = float.(first(points(poly)))
-    @assert norm(center) < 1
-    rays = collect(float.(r.a) for r in Polyhedra.rays(poly))
-    @assert all(r -> norm(r) > 1e-6, rays)
-    normalize_shift!.(rays, (center,))
-    @assert all(c -> norm(c) ≈ 1, rays)
-    return VConeSubset(funcs, [Ray(c) for c in rays])
+    @assert all(iszero, points(poly))
+    rays = collect(r.a for r in Polyhedra.rays(poly))
+    @assert all(r -> !iszero(r), rays)
+    @assert all(r -> length(r) == nb, rays)
+    return FCone(var, [dot(r, base) for r in rays])
 end
 
-function refine_cone(vc::VConeSubset,
+function refine_cone(fc::FCone,
                      F::Field,
                      λ::Real,
-                     ϵ::Real,
                      gens_sos::Vector{<:AbstractPolynomialLike},
                      lib)
-    cone_gens = [dot(r.a, vc.funcs) for r in vc.rays]
-    crossgens = crossprod(cone_gens, gens_sos)
+    crossgens = crossprod(fc.generators, gens_sos)
     lmul!(-1, crossgens)
-    dfuncs = derivative(vc.funcs, F, λ)
-    gens = vcat(dfuncs, crossgens, [Monomial(1)])
-    monos = collect(_monomials(gens))
+    dgens = [derivative(g, F, λ) for g in fc.generators]
+    gens = vcat(dgens, crossgens)
+    d = maximum(p -> maxdegree(p), gens, init=0)::Int
+    @assert d ≥ 0
+    monos = monomials(fc.var, 0:d)
     nm = length(monos)
-    nf = length(vc.funcs)
+    nd = length(dgens)
     ng = length(gens)
-    nr = length(vc.rays)
-    nrow, ncol = nm + nf + ng + nr, nf + ng + nr
-    A = zeros(nrow, ncol)
+    nrow = nm + ng
+    T = coefficient_type(eltype(gens))
+    A = zeros(T, nrow, ng)
     for (i, g) in enumerate(gens)
-        io = nrow * (i - 1) + 1
-        copyto!(A, io, coefficients(g, monos))
+        k = nrow * (i - 1) + 1
+        copyto!(A, k, coefficients(g, monos))
     end
-    for (i, r) in enumerate(vc.rays)
-        io = nrow * (nf + ng + i - 1) + nm + 1
-        copyto!(A, io, r.a)
-    end
-    for i = 1:ncol
+    for i = 1:ng
         A[nm + i, i] = -1
     end
-    b = zeros(nrow)
-    b[nm + nf + ng] = -ϵ
-    hp = polyhedron(hrep(A, b, BitSet(1:(nm + nf))), lib())
-    poly = project(hp, 1:nf)
+    b = zeros(T, nrow)
+    hp = polyhedron(hrep(A, b, BitSet(1:nm)), lib())
+    poly = project(hp, 1:nd)
     @assert isempty(lines(poly))
     @assert length(points(poly)) == 1
-    center = float.(first(points(poly)))
-    @assert norm(center) < 1
-    rays = collect(float.(r.a) for r in Polyhedra.rays(poly))
-    @assert all(r -> norm(r) > 1e-6, rays)
-    normalize_shift!.(rays, (center,))
-    @assert all(c -> norm(c) ≈ 1, rays)
-    return VConeSubset(vc.funcs, [Ray(c) for c in rays])
+    @assert all(iszero, points(poly))
+    rays = collect(r.a for r in Polyhedra.rays(poly))
+    @assert all(r -> !iszero(r), rays)
+    @assert all(r -> length(r) == nd, rays)
+    return FCone(fc.var, [dot(r, fc.generators) for r in rays])
 end
-
-# function refine_cone(fcone::FCone,
-#                      F::Field,
-#                      λ::Real,
-#                      fcone_sos::FCone,
-#                      lib)
-#     D(g) = dot(differentiate.(g, F.var), F.flow) + λ * g
-#     dgens = D.(fcone.generators)
-#     cgens = crossprod(fcone.generators, fcone_sos.generators)
-#     lmul!(-1, cgens)
-#     gens = vcat(dgens, cgens)
-#     monos = collect(_monomials(gens))
-
-#     nm = length(monos)
-#     ng = length(gens)
-#     A = zeros(nm + ng, ng)
-#     for (i, g) in enumerate(gens)
-#         Ao = (nm + ng) * (i - 1) + 1
-#         copyto!(A, Ao, coefficients(g, monos))
-#     end
-#     for i = 1:ng
-#         A[nm + i, i] = -1
-#     end
-#     b = zeros(nm + ng)
-#     hp = polyhedron(hrep(A, b, BitSet(1:nm)), lib())
-#     nc = length(fcone.generators)
-#     poly = project(hp, 1:nc)
-#     @assert length(points(poly)) == 1
-#     @assert all(x -> norm(x) < 1e-6, points(poly))
-#     verts = [r.a for r in rays(poly)]
-#     @assert all(x -> norm(x) > 1e-6, verts)
-#     @assert all(x -> length(x) == nc, verts)
-#     normalize!.(verts)
-#     nondec = true
-#     c = zeros(Int, nc)
-#     for i = 1:nc
-#         c[i] = 1
-#         if c ∉ poly
-#             nondec = false
-#             break
-#         end
-#         c[i] = 0
-#     end
-#     return FCone([dot(c, fcone.generators) for c in verts]), nondec
-# end
 
 end # module

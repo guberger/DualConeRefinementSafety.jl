@@ -2,6 +2,8 @@ module Example_Ahmed2020_8
 
 # Automated and Sound Synthesis of Lyapunov Functions with SMT Solvers
 
+# OK
+
 using LinearAlgebra
 using Random
 Random.seed!(0)
@@ -12,7 +14,7 @@ using CDDLib
 using SumOfSquares
 using MosekTools
 
-include("utils.jl")
+include("../utils.jl")
 
 var, = @polyvar x[1:2]
 flow = [
@@ -50,7 +52,7 @@ scatter!(getindex.(vals, 1), getindex.(vals, 2), label="")
 
 display(plt)
 
-include("../src/DualConeRefinementSafety.jl")
+include("../../src/DualConeRefinementSafety.jl")
 const DCR = DualConeRefinementSafety
 
 F = DCR.Field(var, flow)
@@ -64,9 +66,7 @@ display(length(hc.halfspaces))
 vc = DCR.vcone_from_hcone(hc, () -> CDDLib.Library())
 display(length(vc.rays))
 
-ϵ = 1e-2
 δ = 1e-4
-λ = 1.0
 success = DCR.narrow_vcone!(vc, dom_init, F, λ, ϵ, δ, Inf, solver,
                             callback_func=callback_func)
 display(success)
@@ -78,7 +78,15 @@ end
 z = @. Fplot_vc(x1s_', x2s_)
 display(minimum(z))
 contour!(x1s_, x2s_, z, levels=[0], color=:green, lw=2)
-
 display(plt)
+
+model = solver()
+r = @variable(model)
+dom = DCR.sos_domain_from_vcone(vc)
+@constraint(model, x' * x ≤ r, domain=dom)
+@objective(model, Min, r)
+optimize!(model)
+@assert primal_status(model) == FEASIBLE_POINT
+display(sqrt(value(r)))
 
 end # module

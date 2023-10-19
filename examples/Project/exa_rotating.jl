@@ -10,7 +10,7 @@ using CDDLib
 using SumOfSquares
 using MosekTools
 
-include("utils.jl")
+include("../utils.jl")
 
 var, = @polyvar x[1:2]
 flow = [
@@ -49,7 +49,7 @@ scatter!(getindex.(vals, 1), getindex.(vals, 2), label="")
 
 display(plot(p1, p2, layout=2))
 
-include("../src/DualConeRefinementSafety.jl")
+include("../../src/DualConeRefinementSafety.jl")
 const DCR = DualConeRefinementSafety
 
 F = DCR.Field(var, flow)
@@ -73,7 +73,8 @@ scatter3d!(p2, verts_plots..., ms=4, label="")
 success = DCR.narrow_vcone!(vc, dom_init, F, λ, ϵ, δ, Inf, solver,
                             callback_func=callback_func)
 display(success)
-@assert all(r -> r.a[1] < 1e-5, vc.rays)
+@assert all(r -> r.a[1] < -1e-5, vc.rays)
+display(vc)
 verts_plot = [r.a[2:4] / r.a[1] for r in vc.rays]
 verts_plots = [getindex.(verts_plot, i) for i = 1:3]
 scatter3d!(p2, verts_plots..., ms=4, label="")
@@ -89,5 +90,13 @@ contour!(p1, x1s_, x2s_, z, levels=[0], color=:green, lw=2)
 plt = plot(p1, p2, layout=2)
 savefig("examples/figures/exa_rotating.png")
 display(plt)
+
+model = solver()
+r = @variable(model)
+dom = DCR.sos_domain_from_vcone(vc)
+@constraint(model, x' * x ≤ r, domain=dom)
+@objective(model, Min, r)
+optimize!(model)
+display(sqrt(value(r)))
 
 end # module

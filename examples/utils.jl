@@ -1,6 +1,6 @@
 function generate_vals(np, rad, dt, nstep, vars, flow)
     nvar = length(vars)
-    F!(du, u, ::Any, ::Any) = begin
+    F!(du, u, _, _) = begin
         for (i, f) in enumerate(flow)
             du[i] = f(vars=>u)
         end
@@ -19,7 +19,8 @@ function generate_vals(np, rad, dt, nstep, vars, flow)
 end
 
 const opt_ = optimizer_with_attributes(Mosek.Optimizer, "QUIET"=>true)
-solver() = begin
+solver() = SOSModel(opt_)
+solver_dsos() = begin
     model = SOSModel(opt_)
     @static if isdefined(Main, :DSOS) && Main.DSOS
         PolyJuMP.setdefault!(model, PolyJuMP.NonNegPoly, DSOSCone)
