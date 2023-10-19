@@ -1,5 +1,8 @@
 module Example
 
+# Automated and Sound Synthesis of Lyapunov Functions with SMT Solvers
+# Example 6, modified
+
 using LinearAlgebra
 using Random
 Random.seed!(0)
@@ -14,8 +17,8 @@ include("utils.jl")
 
 var, = @polyvar x[1:2]
 flow = [
-    -0.5 * x[1] + 2 * x[2],
-    -0.5 * x[2],
+    -x[1]^3 + x[2] / 2,
+    -x[1] - 2 * x[2],
 ]
 display(flow)
 rad = 0.5

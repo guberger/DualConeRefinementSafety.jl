@@ -1,5 +1,8 @@
 module Example
 
+# Automated and Sound Synthesis of Lyapunov Functions with SMT Solvers
+# Example 6, modified
+
 using LinearAlgebra
 using Random
 Random.seed!(0)
@@ -14,8 +17,8 @@ include("utils.jl")
 
 var, = @polyvar x[1:2]
 flow = [
-    -0.5 * x[1] + 2 * x[2],
-    -0.5 * x[2],
+    -x[1]^3 + 5 * x[2],
+    -x[1] - x[2],
 ]
 display(flow)
 rad = 0.5
@@ -54,7 +57,7 @@ const DCR = DualConeRefinementSafety
 
 F = DCR.Field(var, flow)
 points = [DCR.Point(var, val) for val in vals]
-funcs = [1, x[1], x[2]]
+funcs = [1, x[1]^2, x[1]*x[2], x[2]^2]
 λ = 1.0
 ϵ = 1e-1
 hc = DCR.hcone_from_points(funcs, F, λ, ϵ, points)

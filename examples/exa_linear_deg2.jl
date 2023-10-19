@@ -1,6 +1,4 @@
-module Example_Linear_Deg2
-
-# Automated and Sound Synthesis of Lyapunov Functions with SMT Solvers
+module Example
 
 using LinearAlgebra
 using Random

@@ -76,7 +76,6 @@ function vcone_from_hcone(hc::HConeSubset, lib::Function)
     @assert length(hc.funcs) > 0
     @assert all(h -> length(h.a) == length(hc.funcs), hc.halfspaces)
     poly = polyhedron(hrep(hc.halfspaces), lib())
-    display(points(poly))
     @assert isempty(lines(poly))
     @assert length(points(poly)) == 1
     center = float.(first(points(poly)))

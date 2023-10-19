@@ -1,5 +1,7 @@
 module Example
 
+# Linear with cube
+
 using LinearAlgebra
 using Random
 Random.seed!(0)
@@ -14,7 +16,7 @@ include("utils.jl")
 
 var, = @polyvar x[1:2]
 flow = [
-    -0.5 * x[1] + 2 * x[2],
+    -0.5 * x[1]^3 + 2 * x[2],
     -0.5 * x[2],
 ]
 display(flow)
@@ -39,7 +41,7 @@ Fplot_init(x1, x2) = maximum(g(var=>[x1, x2]) for g in inequalities(dom_init))
 z = @. Fplot_init(x1s_', x2s_)
 contour!(plt, x1s_, x2s_, z, levels=[0])
 
-nstep = 5
+nstep = 2
 dt = 0.25
 np = 20
 rad = 0.5
@@ -54,7 +56,7 @@ const DCR = DualConeRefinementSafety
 
 F = DCR.Field(var, flow)
 points = [DCR.Point(var, val) for val in vals]
-funcs = [1, x[1], x[2]]
+funcs = [1, x[1]^2, x[1]*x[2], x[2]^2]
 λ = 1.0
 ϵ = 1e-1
 hc = DCR.hcone_from_points(funcs, F, λ, ϵ, points)
