@@ -60,13 +60,14 @@ display(plt)
 F = MP.Field(var, flow)
 λ = 1
 
-fc = MP.refine_cone(fc, F, λ, gens_pos, lib)
-display(fc)
-# Does not work after first iteration because too large ...
-# fc = MP.refine_cone(fc, F, λ, gens_pos, lib)
-# display(fc)
-# Hence, I could not find an invariant with this technique
+fc1 = MP.refine_cone(fc, F, λ, gens_pos, lib)
+display(fc1.gens)
+# Takes some time (2 min)
+fc2 = MP.refine_cone(fc1, F, λ, gens_pos, lib)
+display(fc2.gens)
+display(Set(fc1.gens) == Set(fc2.gens)) # True means convergence
 
+fc = fc2
 z = @. Fplot_init(x1s_', x2s_)
 display(minimum(z))
 contour!(plt, x1s_, x2s_, z, levels=[0], color=:green, lw=2)
