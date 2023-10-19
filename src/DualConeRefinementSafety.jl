@@ -76,6 +76,7 @@ function vcone_from_hcone(hc::HConeSubset, lib::Function)
     @assert length(hc.funcs) > 0
     @assert all(h -> length(h.a) == length(hc.funcs), hc.halfspaces)
     poly = polyhedron(hrep(hc.halfspaces), lib())
+    display(points(poly))
     @assert isempty(lines(poly))
     @assert length(points(poly)) == 1
     center = float.(first(points(poly)))
@@ -187,3 +188,45 @@ function narrow_vcone!(vc::VConeSubset,
     end
     return success
 end
+
+function find_maximum(f::AbstractPolynomialLike,
+                      vc::VConeSubset,
+                      solver)
+    model = solver()
+    r = @variable(model)
+    dom = sos_domain_from_vcone(vc)
+    @constraint(model, f ≤ r, domain=dom)
+    @objective(model, Min, r)
+    optimize!(model)
+    if primal_status(model) != FEASIBLE_POINT
+        display(solution_summary(model))
+        error("!FEASIBLE_POINT")
+    end
+    return objective_value(model)
+end
+
+function trim_vcone(vc::VConeSubset, tol::Real, solver)
+    remove_set = BitSet()
+    for (i, r) in enumerate(vc.rays)
+        f = dot(r.a, vc.funcs)
+        val_max = find_maximum(f, vc, solver)
+        if val_max < -tol
+            push!(remove_set, i)
+        end
+    end
+    return remove_set
+end
+
+function simplify_vcone!(vc::VConeSubset, tol::Real, solver)
+    while true
+        remove_set = trim_vcone(vc, tol, solver)
+        if !isempty(remove_set)
+            deleteat!(vc.rays, remove_set)
+        else
+            break
+        end
+    end
+    return nothing
+end
+
+end # module

@@ -1,4 +1,4 @@
-function generate_vals(np, rad, dt, nstep, vars, flow)
+function generate_vals_on_ball(np, rad, dt, nstep, vars, flow)
     nvar = length(vars)
     F!(du, u, _, _) = begin
         for (i, f) in enumerate(flow)
