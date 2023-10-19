@@ -20,13 +20,6 @@ end
 
 const opt_ = optimizer_with_attributes(Mosek.Optimizer, "QUIET"=>true)
 solver() = SOSModel(opt_)
-solver_dsos() = begin
-    model = SOSModel(opt_)
-    @static if isdefined(Main, :DSOS) && Main.DSOS
-        PolyJuMP.setdefault!(model, PolyJuMP.NonNegPoly, DSOSCone)
-    end
-    return model
-end
 
 function callback_func(iter, i, ng, r_max)
     if i < ng

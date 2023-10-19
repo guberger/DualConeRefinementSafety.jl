@@ -49,29 +49,29 @@ scatter!(plt, getindex.(vals, 1), getindex.(vals, 2), label="")
 
 display(plt)
 
-include("../src/DualConeRefinementSafety.jl")
-const DCR = DualConeRefinementSafety
+include("../src/InvariancePolynomial.jl")
+const MP = InvariancePolynomial.Projection
 
-F = DCR.Field(var, flow)
-points = [DCR.Point(var, val) for val in vals]
+F = MP.Field(var, flow)
+points = [MP.Point(var, val) for val in vals]
 funcs = [1, x[1]^2, x[1]*x[2], x[2]^2]
 λ = 1.0
 ϵ = 1e-1
-hc = DCR.hcone_from_points(funcs, F, λ, ϵ, points)
+hc = MP.hcone_from_points(funcs, F, λ, ϵ, points)
 display(length(hc.halfspaces))
 
-vc = DCR.vcone_from_hcone(hc, () -> CDDLib.Library())
+vc = MP.vcone_from_hcone(hc, () -> CDDLib.Library())
 display(length(vc.rays))
 
 δ = 1e-4
-success = DCR.narrow_vcone!(vc, dom_init, F, λ, ϵ, δ, Inf, solver,
+success = MP.narrow_vcone!(vc, dom_init, F, λ, ϵ, δ, Inf, solver,
                             callback_func=callback_func)
 display(success)
 display(vc.funcs)
 display(vc.rays)
-DCR.simplify_vcone!(vc, 1e-5, solver)
+MP.simplify_vcone!(vc, 1e-5, solver)
 display(vc.rays)
-resize!(vc.rays, 3)
+# resize!(vc.rays, 3)
 
 Fplot_vc(x1, x2) = begin
     gxs = [g(var=>[x1, x2]) for g in vc.funcs]
@@ -81,12 +81,11 @@ z = @. Fplot_vc(x1s_', x2s_)
 display(minimum(z))
 contour!(plt, x1s_, x2s_, z, levels=[0], color=:green, lw=2)
 
-savefig("examples/figures/exa_rotating.png")
 display(plt)
 
 model = solver()
 r = @variable(model)
-dom = DCR.sos_domain_from_vcone(vc)
+dom = MP.sos_domain_from_vcone(vc)
 @constraint(model, x' * x ≤ r, domain=dom)
 @objective(model, Min, r)
 optimize!(model)

@@ -31,33 +31,33 @@ dt = 0.25
 np = 20
 vals = generate_vals_on_ball(np, rad, dt, nstep, var, flow)
 
-include("../src/DualConeRefinementSafety.jl")
-const DCR = DualConeRefinementSafety
+include("../src/InvariancePolynomial.jl")
+const MP = InvariancePolynomial.Projection
 
-F = DCR.Field(var, flow)
-points = [DCR.Point(var, val) for val in vals]
+F = MP.Field(var, flow)
+points = [MP.Point(var, val) for val in vals]
 funcs = [1, x[1]^2, x[2]^2, x[3]^2]
 λ = 1.0
 ϵ = 1e-1
-hc = DCR.hcone_from_points(funcs, F, λ, ϵ, points)
+hc = MP.hcone_from_points(funcs, F, λ, ϵ, points)
 display(length(hc.halfspaces))
 
-vc = DCR.vcone_from_hcone(hc, () -> CDDLib.Library())
+vc = MP.vcone_from_hcone(hc, () -> CDDLib.Library())
 display(length(vc.rays))
 
 δ = 1e-4
-success = DCR.narrow_vcone!(vc, dom_init, F, λ, ϵ, δ, Inf, solver,
+success = MP.narrow_vcone!(vc, dom_init, F, λ, ϵ, δ, Inf, solver,
                             callback_func=callback_func)
 display(success)
 display(vc.funcs)
 display(vc.rays)
-DCR.simplify_vcone!(vc, 1e-5, solver)
+MP.simplify_vcone!(vc, 1e-5, solver)
 display(vc.rays)
 display([dot(r.a, vc.funcs) for r in vc.rays])
 
 model = solver()
 r = @variable(model)
-dom = DCR.sos_domain_from_vcone(vc)
+dom = MP.sos_domain_from_vcone(vc)
 @constraint(model, x' * x ≤ r, domain=dom)
 @objective(model, Min, r)
 optimize!(model)

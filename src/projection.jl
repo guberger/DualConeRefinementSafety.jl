@@ -1,6 +1,4 @@
-module DualConeRefinementSafety
-
-greet() = print("Hello World!")
+module Projection
 
 using LinearAlgebra
 using Polyhedra
