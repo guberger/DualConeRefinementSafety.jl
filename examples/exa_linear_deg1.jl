@@ -22,7 +22,7 @@ rad = 0.5
 dom_init = @set x' * x ≤ rad^2
 
 x1s_ = range(-2, 2, length=15)
-x2s_ = range(-2, 2, length=15)
+x2s_ = range(-1, 1, length=15)
 xs = collect(Iterators.product(x1s_, x2s_))[:]
 x1s = getindex.(xs, 1)
 x2s = getindex.(xs, 2)
@@ -31,13 +31,13 @@ nx = maximum(dx -> norm(dx), dxs)
 dxs1 = getindex.(dxs, 1) * 0.4 / nx
 dxs2 = getindex.(dxs, 2) * 0.4 / nx
 plt = plot(xlabel="x1", ylabel="x2", aspect_ratio=:equal)
-quiver!(plt, x1s, x2s, quiver=(dxs1, dxs2))
+quiver!(x1s, x2s, quiver=(dxs1, dxs2))
 
 x1s_ = range(-2, 2, length=500)
-x2s_ = range(-2, 2, length=500)
+x2s_ = range(-1, 1, length=500)
 Fplot_init(x1, x2) = maximum(g(var=>[x1, x2]) for g in inequalities(dom_init))
 z = @. Fplot_init(x1s_', x2s_)
-contour!(plt, x1s_, x2s_, z, levels=[0])
+contour!(x1s_, x2s_, z, levels=[0])
 
 nstep = 5
 dt = 0.25
@@ -78,9 +78,22 @@ Fplot_vc(x1, x2) = begin
 end
 z = @. Fplot_vc(x1s_', x2s_)
 display(minimum(z))
-contour!(plt, x1s_, x2s_, z, levels=[0], color=:green, lw=2)
+contour!(x1s_, x2s_, z, levels=[0], color=:green, lw=2)
 
 display(plt)
+
+@polyvar x0 x1
+file = open(string(@__DIR__, "/output.txt"), "w")
+println(file, "Flow")
+for f in flow
+    println(file, f(var=>[x0, x1]), ",")
+end
+println(file, "Barriers")
+for r in vc.rays
+    p = dot(vc.funcs, r.a)
+    println(file, p(var=>[x0, x1]), ",")
+end
+close(file)
 
 model = solver()
 r = @variable(model)

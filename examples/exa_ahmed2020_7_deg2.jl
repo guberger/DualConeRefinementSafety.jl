@@ -53,7 +53,21 @@ display(vc.funcs)
 display(vc.rays)
 MP.simplify_vcone!(vc, 1e-5, solver)
 display(vc.rays)
-display([dot(r.a, vc.funcs) for r in vc.rays])
+
+# resize!(vc.rays, 3)
+
+@polyvar x0 x1 x2
+file = open(string(@__DIR__, "/output.txt"), "w")
+println(file, "Flow")
+for f in flow
+    println(file, f(var=>[x0, x1, x2]), ",")
+end
+println(file, "Barriers")
+for r in vc.rays
+    p = dot(vc.funcs, r.a)
+    println(file, p(var=>[x0, x1, x2]), ",")
+end
+close(file)
 
 model = solver()
 r = @variable(model)
