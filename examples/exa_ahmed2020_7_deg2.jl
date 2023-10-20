@@ -54,8 +54,6 @@ display(vc.rays)
 MP.simplify_vcone!(vc, 1e-5, solver)
 display(vc.rays)
 
-# resize!(vc.rays, 3)
-
 @polyvar x0 x1 x2
 file = open(string(@__DIR__, "/output.txt"), "w")
 println(file, "Flow")
