@@ -93,8 +93,9 @@ struct SoSConstraint{VT<:AbstractPolynomialLike,
     ϵ::ET
 end
 
-function sos_domain_from_vcone(vc::VConeSubset)
-    S = FullSpace()
+function sos_domain_from_vcone(vc::VConeSubset;
+                               init::AbstractBasicSemialgebraicSet=FullSpace())
+    S = init
     for r in vc.rays
         S = S ∩ @set(dot(r.a, vc.funcs) ≤ 0)
     end
@@ -158,6 +159,7 @@ function narrow_vcone!(vc::VConeSubset,
                        δ::Real,
                        maxiter,
                        solver;
+                       dom_inv::AbstractBasicSemialgebraicSet=FullSpace(),
                        callback_func=(args...) -> nothing)
     ncoeff = length(vc.funcs)
     con_init = SoSConstraint(vc.funcs, dom_init, ϵ)
@@ -166,7 +168,7 @@ function narrow_vcone!(vc::VConeSubset,
     success::Bool = false
     while iter < maxiter && !success
         iter += 1
-        dom_deriv = sos_domain_from_vcone(vc)
+        dom_deriv = sos_domain_from_vcone(vc, init=dom_inv)
         con_deriv = SoSConstraint(dfuncs, dom_deriv, ϵ)
         sosprob = SoSProblem(ncoeff, [con_init, con_deriv])
         callback_ = (args...) -> callback_func(iter, args...)
@@ -206,7 +208,9 @@ function trim_vcone(vc::VConeSubset, tol::Real, solver)
     remove_set = BitSet()
     for (i, r) in enumerate(vc.rays)
         f = dot(r.a, vc.funcs)
-        val_max = find_maximum(f, vc, solver)
+        vc_new = VConeSubset(vc.funcs, copy(vc.rays))
+        deleteat!(vc_new.rays, i)
+        val_max = find_maximum(f, vc_new, solver)
         if val_max < -tol
             push!(remove_set, i)
         end

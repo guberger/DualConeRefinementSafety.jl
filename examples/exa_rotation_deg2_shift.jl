@@ -1,8 +1,5 @@
 module Example
 
-# Automated and Sound Synthesis of Lyapunov Functions with SMT Solvers
-# Example 6, modified
-
 using LinearAlgebra
 using Random
 Random.seed!(0)
@@ -17,15 +14,15 @@ include("utils.jl")
 
 var, = @polyvar x[1:2]
 flow = [
-    -x[1]^3 + x[2] / 2,
-    -x[1] - 2 * x[2],
+    - 0.1 * (x[1] - 1)^3 - x[2] / 2,
+    2 * (x[1] - 1) - 0.1 * x[2]^3,
 ]
 display(flow)
 rad = 0.5
 dom_init = @set x' * x ≤ rad^2
 
-x1s_ = range(-2, 2, length=15)
-x2s_ = range(-2, 2, length=15)
+x1s_ = range(-4, 4, length=15)
+x2s_ = range(-4, 4, length=15)
 xs = collect(Iterators.product(x1s_, x2s_))[:]
 x1s = getindex.(xs, 1)
 x2s = getindex.(xs, 2)
@@ -36,19 +33,19 @@ dxs2 = getindex.(dxs, 2) * 0.4 / nx
 plt = plot(xlabel="x1", ylabel="x2", aspect_ratio=:equal)
 quiver!(x1s, x2s, quiver=(dxs1, dxs2))
 
-x1s_ = range(-2, 2, length=500)
-x2s_ = range(-2, 2, length=500)
+x1s_ = range(-4, 4, length=500)
+x2s_ = range(-4, 4, length=500)
 Fplot_init(x1, x2) = maximum(g(var=>[x1, x2]) for g in inequalities(dom_init))
 z = @. Fplot_init(x1s_', x2s_)
 contour!(x1s_, x2s_, z, levels=[0])
 
-nstep = 5
+nstep = 50
 dt = 0.25
 np = 20
 rad = 0.5
 vals = generate_vals_on_ball(np, rad, dt, nstep, var, flow)
 
-scatter!(plt, getindex.(vals, 1), getindex.(vals, 2), label="")
+scatter!(plt, getindex.(vals, 1), getindex.(vals, 2), label="", ms=1)
 
 display(plt)
 
@@ -57,9 +54,9 @@ const MP = InvariancePolynomial.Projection
 
 F = MP.Field(var, flow)
 points = [MP.Point(var, val) for val in vals]
-funcs = [1, x[1], x[2]]
+funcs = [1, x[1], x[2], x[1]^2, x[2]^2]
 λ = 1.0
-ϵ = 1e-1
+ϵ = 1e-3
 hc = MP.hcone_from_points(funcs, F, λ, ϵ, points)
 display(length(hc.halfspaces))
 

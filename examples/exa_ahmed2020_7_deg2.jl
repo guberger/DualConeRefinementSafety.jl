@@ -47,7 +47,7 @@ display(length(vc.rays))
 
 δ = 1e-4
 success = MP.narrow_vcone!(vc, dom_init, F, λ, ϵ, δ, Inf, solver,
-                            callback_func=callback_func)
+                           callback_func=callback_func)
 display(success)
 display(vc.funcs)
 display(vc.rays)

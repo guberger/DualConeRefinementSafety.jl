@@ -1,6 +1,5 @@
 import z3
 from sympy import symbols, diff, lambdify
-from sympy.utilities.lambdify import lambdastr
 
 def lie_derivative(g, flow, x):
     assert len(flow) == len(x)

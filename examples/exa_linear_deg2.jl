@@ -65,13 +65,12 @@ display(length(vc.rays))
 
 δ = 1e-4
 success = MP.narrow_vcone!(vc, dom_init, F, λ, ϵ, δ, Inf, solver,
-                            callback_func=callback_func)
+                           callback_func=callback_func)
 display(success)
 display(vc.funcs)
 display(vc.rays)
 MP.simplify_vcone!(vc, 1e-5, solver)
 display(vc.rays)
-# resize!(vc.rays, 3)
 
 Fplot_vc(x1, x2) = begin
     gxs = [g(var=>[x1, x2]) for g in vc.funcs]
