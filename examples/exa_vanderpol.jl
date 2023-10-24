@@ -69,8 +69,6 @@ vals = generate_vals_on_ball(np, rad, dt, nstep, var, flow)
 display(plt)
 savefig(plt, "examples/figures/vanderpol_field.png")
 
-@assert false
-
 include("../src/InvariancePolynomial.jl")
 const MP = InvariancePolynomial.Projection
 
@@ -78,7 +76,7 @@ F = MP.Field(var, flow)
 points = [MP.Point(var, val) for val in vals]
 funcs = [1, x[1]^2, x[1]*x[2], x[2]^2]
 λ = 1.0
-ϵ = 1e-3
+ϵ = 1e-1
 hc = MP.hcone_from_points(funcs, F, λ, ϵ, points)
 display(length(hc.halfspaces))
 
@@ -94,13 +92,22 @@ display(vc.rays)
 MP.simplify_vcone!(vc, 1e-9, solver)
 display(vc.rays)
 
+# vc_all = vc
+# ------------------------------------------------------------------------------
+
+vc = MP.VConeSubset(vc.funcs, vc_all.rays[[2, 6, 8]])
+
+plot!(ylims=(-9, 9))
+
 Fplot_vc(x1, x2) = begin
     gxs = [g(var=>[x1, x2]) for g in vc.funcs]
     maximum(r -> dot(r.a, gxs), vc.rays)
 end
+
+x2s_ = range(-9, 9, length=500)
 z = @. Fplot_vc(x1s_', x2s_)
 display(minimum(z))
-contour!(x1s_, x2s_, z, levels=[0], color=:green, lw=2)
+contour!(plt, x1s_, x2s_, z, levels=[0], c=:black, lw=2)
 
 display(plt)
 
