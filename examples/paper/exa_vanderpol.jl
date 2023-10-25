@@ -3,6 +3,7 @@ module Example
 using LinearAlgebra
 using Random
 Random.seed!(0)
+using LaTeXStrings
 using DynamicPolynomials
 using Plots
 using DifferentialEquations
@@ -10,7 +11,7 @@ using CDDLib
 using SumOfSquares
 using MosekTools
 
-include("utils.jl")
+include("../utils.jl")
 
 var, = @polyvar x[1:2]
 μ = 0.5
@@ -22,11 +23,18 @@ display(flow)
 rad = 3
 dom_init = @set x' * x ≤ rad^2
 
-plt = plot(xlabel="x1", ylabel="x2",
-           aspect_ratio=:equal, xlims=(-7, 7), ylims=(-7, 7))
+# xlims = (-4, 4)
+# xlims = (-5, 5)
+xlims = (-6, 6)
+# ylims = (-4, 4)
+# ylims = (-6, 6)
+ylims = (-8, 8)
+plt = plot(xlabel=L"x_1", ylabel=L"x_2",
+           aspect_ratio=:equal,
+           xlims=xlims .* 1.1, ylims=ylims .* 1.1)
 
-x1s_ = range(-6, 6, length=15)
-x2s_ = range(-6, 6, length=15)
+x1s_ = range(xlims..., length=15)
+x2s_ = range(ylims..., length=15)
 xs = collect(Iterators.product(x1s_, x2s_))[:]
 x1s = getindex.(xs, 1)
 x2s = getindex.(xs, 2)
@@ -36,8 +44,8 @@ dxs1 = getindex.(dxs, 1) * 0.4 / nx
 dxs2 = getindex.(dxs, 2) * 0.4 / nx
 quiver!(x1s, x2s, quiver=(dxs1, dxs2))
 
-x1s_ = range(-6, 6, length=500)
-x2s_ = range(-6, 6, length=500)
+x1s_ = range(xlims..., length=500)
+x2s_ = range(ylims..., length=500)
 Fplot_init(x1, x2) = maximum(g(var=>[x1, x2]) for g in inequalities(dom_init))
 z = @. Fplot_init(x1s_', x2s_)
 contourf!(x1s_, x2s_, z, levels=[0, 100],
@@ -69,7 +77,7 @@ vals = generate_vals_on_ball(np, rad, dt, nstep, var, flow)
 display(plt)
 savefig(plt, "examples/figures/vanderpol_field.png")
 
-include("../src/InvariancePolynomial.jl")
+include("../../src/InvariancePolynomial.jl")
 const MP = InvariancePolynomial.Projection
 
 F = MP.Field(var, flow)
@@ -83,33 +91,53 @@ display(length(hc.halfspaces))
 vc = MP.vcone_from_hcone(hc, () -> CDDLib.Library())
 display(length(vc.rays))
 
+vc_list = typeof(vc)[]
+function record_func(vc)
+    push!(vc_list, MP.VConeSubset(vc.funcs, copy(vc.rays)))
+end
+
 δ = 1e-9
-success = MP.narrow_vcone!(vc, dom_init, F, λ, ϵ, δ, Inf, solver,
-                           callback_func=callback_func)
-display(success)
+flag = @time MP.narrow_vcone!(vc, dom_init, F, λ, ϵ, δ, Inf, solver,
+                           callback_func=callback_func,
+                           record_func=record_func)
+display(flag)
 display(vc.funcs)
 display(vc.rays)
 MP.simplify_vcone!(vc, 1e-9, solver)
 display(vc.rays)
 
-# vc_all = vc
 # ------------------------------------------------------------------------------
-
-vc = MP.VConeSubset(vc.funcs, vc_all.rays[[2, 6, 8]])
-
-plot!(ylims=(-9, 9))
 
 Fplot_vc(x1, x2) = begin
     gxs = [g(var=>[x1, x2]) for g in vc.funcs]
     maximum(r -> dot(r.a, gxs), vc.rays)
 end
 
-x2s_ = range(-9, 9, length=500)
-z = @. Fplot_vc(x1s_', x2s_)
-display(minimum(z))
-contour!(plt, x1s_, x2s_, z, levels=[0], c=:black, lw=2)
+empty!(vc_list)
+
+for vc_curr in vc_list
+    global vc = vc_curr
+    z = @. Fplot_vc(x1s_', x2s_)
+    display(minimum(z))
+    contour!(plt, x1s_, x2s_, z, levels=[0], c=:black, lw=2)
+end
 
 display(plt)
+savefig(plt, "examples/figures/vanderpol_iterations.png")
+
+z = @. Fplot_vc(x1s_', x2s_)
+display(minimum(z))
+contour!(plt, x1s_, x2s_, z, levels=[0], c=:green, lw=2)
+
+vc = MP.VConeSubset(vc.funcs, vc.rays[[2, 6, 8]])
+display(vc)
+
+z = @. Fplot_vc(x1s_', x2s_)
+display(minimum(z))
+contour!(plt, x1s_, x2s_, z, levels=[0], c=:red, lw=2)
+
+display(plt)
+savefig(plt, "examples/figures/vanderpol_invariant.png")
 
 @polyvar x0 x1
 file = open(string(@__DIR__, "/output.txt"), "w")
