@@ -87,7 +87,6 @@ z = @. Fplot_vc(x1s_', x2s_)
 display(minimum(z))
 contour!(x1s_, x2s_, z, levels=[0], color=:green, lw=2)
 
-#=
 funcs = [1, x[1]^2, x[1]*x[2], x[2]^2]
 hc = MP.hcone_from_points(funcs, F, λ, ϵ, points)
 display(length(hc.halfspaces))
@@ -120,18 +119,19 @@ contour!(x1s_, x2s_, z, levels=[0], color=:blue, lw=2)
 
 display(plt)
 savefig(plt, "examples/figures/nonlinear2.png")
-=#
 
-@polyvar x0 x1
+copy!(vc.rays, all_rays)
+
+@polyvar x1 x2
 file = open(string(@__DIR__, "/output.txt"), "w")
 println(file, "Flow")
 for f in flow
-    println(file, f(var=>[x0, x1]), ",")
+    println(file, f(var=>[x1, x2]), ",")
 end
 println(file, "Barriers")
 for r in vc.rays
     p = dot(vc.funcs, r.a)
-    println(file, p(var=>[x0, x1]), ",")
+    println(file, p(var=>[x1, x2]), ",")
 end
 close(file)
 

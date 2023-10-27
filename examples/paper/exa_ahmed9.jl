@@ -54,16 +54,16 @@ display(vc.rays)
 MP.simplify_vcone!(vc, 1e-5, solver)
 display(vc.rays)
 
-@polyvar x0 x1 x2 x3
+@polyvar x1 x2 x3 x4
 file = open(string(@__DIR__, "/output.txt"), "w")
 println(file, "Flow")
 for f in flow
-    println(file, f(var=>[x0, x1, x2, x3]), ",")
+    println(file, f(var=>[x1, x2, x3, x4]), ",")
 end
 println(file, "Barriers")
 for r in vc.rays
     p = dot(vc.funcs, r.a)
-    println(file, p(var=>[x0, x1, x2, x3]), ",")
+    println(file, p(var=>[x1, x2, x3, x4]), ",")
 end
 close(file)
 

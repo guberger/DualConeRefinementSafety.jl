@@ -93,17 +93,17 @@ funcs = [1, x[1]^2, x[1]*x[2], x[2]^2]
 hc = MP.hcone_from_points(funcs, F, λ, ϵ, points)
 display(length(hc.halfspaces))
 
-vc = MP.vcone_from_hcone(hc, () -> CDDLib.Library())
-display(length(vc.rays))
+# vc = MP.vcone_from_hcone(hc, () -> CDDLib.Library())
+# display(length(vc.rays))
 
-δ = 1e-8
-flag = @time MP.narrow_vcone!(vc, dom_init, F, λ, ϵ, δ, Inf, solver,
-                              callback_func=callback_func)
-display(flag)
-display(vc.funcs)
-display(vc.rays)
-MP.simplify_vcone!(vc, 1e-5, solver, delete=false)
-display(vc.rays)
+# δ = 1e-8
+# flag = @time MP.narrow_vcone!(vc, dom_init, F, λ, ϵ, δ, Inf, solver,
+#                               callback_func=callback_func)
+# display(flag)
+# display(vc.funcs)
+# display(vc.rays)
+# MP.simplify_vcone!(vc, 1e-5, solver, delete=false)
+# display(vc.rays)
 
 z = @. Fplot_vc(x1s_', x2s_)
 display(minimum(z))
@@ -112,16 +112,16 @@ contour!(x1s_, x2s_, z, levels=[0], color=:red, lw=2)
 display(plt)
 savefig(plt, "examples/figures/nonlinear1.png")
 
-@polyvar x0 x1
+@polyvar x1 x2
 file = open(string(@__DIR__, "/output.txt"), "w")
 println(file, "Flow")
 for f in flow
-    println(file, f(var=>[x0, x1]), ",")
+    println(file, f(var=>[x1, x2]), ",")
 end
 println(file, "Barriers")
 for r in vc.rays
     p = dot(vc.funcs, r.a)
-    println(file, p(var=>[x0, x1]), ",")
+    println(file, p(var=>[x1, x2]), ",")
 end
 close(file)
 

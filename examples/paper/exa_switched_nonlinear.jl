@@ -198,4 +198,15 @@ contour!(x1s_, x2s_, z, levels=[0], color=:green, lw=2)
 display(plt)
 savefig(plt, "examples/figures/switched_nonlinear.png")
 
+vc = vc3
+
+@polyvar x1 x2
+file = open(string(@__DIR__, "/output.txt"), "w")
+println(file, "Barriers")
+for r in vc.rays
+    p = dot(vc.funcs, r.a)
+    println(file, p(var=>[x1, x2]), ",")
+end
+close(file)
+
 end # module

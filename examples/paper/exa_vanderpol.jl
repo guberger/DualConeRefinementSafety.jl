@@ -139,16 +139,16 @@ contour!(plt, x1s_, x2s_, z, levels=[0], c=:red, lw=2)
 display(plt)
 savefig(plt, "examples/figures/vanderpol_invariant.png")
 
-@polyvar x0 x1
+@polyvar x1 x2
 file = open(string(@__DIR__, "/output.txt"), "w")
 println(file, "Flow")
 for f in flow
-    println(file, f(var=>[x0, x1]), ",")
+    println(file, f(var=>[x1, x2]), ",")
 end
 println(file, "Barriers")
 for r in vc.rays
     p = dot(vc.funcs, r.a)
-    println(file, p(var=>[x0, x1]), ",")
+    println(file, p(var=>[x1, x2]), ",")
 end
 close(file)
 
