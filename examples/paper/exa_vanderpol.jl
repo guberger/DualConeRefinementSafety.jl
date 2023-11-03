@@ -129,6 +129,7 @@ z = @. Fplot_vc(x1s_', x2s_)
 display(minimum(z))
 contour!(plt, x1s_, x2s_, z, levels=[0], c=:green, lw=2)
 
+vc_old = vc
 vc = MP.VConeSubset(vc.funcs, vc.rays[[2, 6, 8]])
 display(vc)
 
@@ -138,6 +139,8 @@ contour!(plt, x1s_, x2s_, z, levels=[0], c=:red, lw=2)
 
 display(plt)
 savefig(plt, "examples/figures/vanderpol_invariant.png")
+
+vc = vc_old
 
 @polyvar x1 x2
 file = open(string(@__DIR__, "/output.txt"), "w")

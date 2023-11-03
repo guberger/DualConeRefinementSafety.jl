@@ -55,7 +55,7 @@ MP.simplify_vcone!(vc, 1e-5, solver)
 display(vc.rays)
 
 all_rays = copy(vc.rays)
-keepat!(vc.rays, [2])
+# keepat!(vc.rays, [2])
 
 copy!(vc.rays, all_rays)
 
