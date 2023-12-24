@@ -1,16 +1,17 @@
-function generate_vals_on_ball(np, rad, dt, nstep, var, flow)
+function generate_vals_on_ball(np, xc, rad, dt, nstep, var, flow)
     nvar = length(var)
+    @assert length(xc) == nvar
     F!(du, u, _, _) = begin
         for (i, f) in enumerate(flow)
             du[i] = f(var=>u)
         end
         nothing
     end
-    vals = [zeros(nvar)]
+    vals = [xc]
     for _ = 1:np
         u0 = randn(nvar)
         normalize!(u0)
-        lmul!(rad, u0)
+        u0 = rad * u0 + xc
         prob = ODEProblem(F!, u0, (0, nstep*dt))
         sol = solve(prob, saveat=dt)
         append!(vals, sol.u)
