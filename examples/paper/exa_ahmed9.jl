@@ -7,7 +7,6 @@ using LinearAlgebra
 using Random
 Random.seed!(0)
 using DynamicPolynomials
-using Plots
 using DifferentialEquations
 using CDDLib
 using SumOfSquares
@@ -23,13 +22,14 @@ flow = [
     x[1] * x[3] - x[4]^3,
 ]
 display(flow)
+xc = zeros(4)
 rad = 0.5
-dom_init = @set x' * x ≤ rad^2
+dom_init = @set (x - xc)' * (x - xc) ≤ rad^2
 
 nstep = 5
 dt = 0.25
 np = 20
-vals = generate_vals_on_ball(np, rad, dt, nstep, var, flow)
+vals = generate_vals_on_ball(np, xc, rad, dt, nstep, var, flow)
 
 include("../../src/InvariancePolynomial.jl")
 const MP = InvariancePolynomial.Projection
@@ -47,23 +47,35 @@ display(length(vc.rays))
 
 δ = 1e-8
 flag = @time MP.narrow_vcone!(vc, dom_init, F, λ, ϵ, δ, Inf, solver,
-                           callback_func=callback_func)
-display(flag)
-display(vc.funcs)
-display(vc.rays)
-MP.simplify_vcone!(vc, 1e-5, solver)
-display(vc.rays)
+                              callback_func=callback_func)
+@assert flag
+display(length(vc.rays))
+MP.simplify_vcone!(vc, 1e-5, solver, delete=false)
+display(length(vc.rays))
 
-@polyvar x1 x2 x3 x4
+#-------------------------------------------------------------------------------
+
 file = open(string(@__DIR__, "/output.txt"), "w")
+@polyvar x0 x1 x2 x3
 println(file, "Flow")
 for f in flow
-    println(file, f(var=>[x1, x2, x3, x4]), ",")
+    str = string(f(var=>[x0, x1, x2, x3]), ",")
+    str = replace(str, "^"=>"**")
+    println(file, str)
 end
-println(file, "Barriers")
+println(file, "Barriers python")
 for r in vc.rays
     p = dot(vc.funcs, r.a)
-    println(file, p(var=>[x1, x2, x3, x4]), ",")
+    str = string(p(var=>[x0, x1, x2, x3]), ",")
+    str = replace(str, "^"=>"**")
+    println(file, str)
+end
+@polyvar x1 x2 x3 x4
+println(file, "Barriers latex")
+for r in vc.rays
+    p = dot(vc.funcs, r.a)
+    str = string(p(var=>[x1, x2, x3, x4]), ",")
+    println(file, str)
 end
 close(file)
 

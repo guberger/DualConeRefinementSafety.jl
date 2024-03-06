@@ -15,10 +15,10 @@ dom = @set (
     0.5 * x[1]^2 - 0 * x[1]*x[2] + 0.25 * x[2]^2 ≤ 1
 )
 
-display(dom)
-
 plt = plot(xlabel=L"x_1", ylabel=L"x_2",
-           aspect_ratio=:equal, xlims=(-2.5, 2.5), ylims=(-2.5, 2.5))
+           aspect_ratio=:equal,
+           xlims=(-2.5, 2.5), ylims=(-2.5, 2.5),
+           dpi=400)
 
 x1s_ = range(-2.5, 2.5, length=500)
 x2s_ = range(-2.5, 2.5, length=500)
@@ -34,7 +34,6 @@ for g in inequalities(dom)
              lw=1, c=:black, colorbar=:none)
 end
 
-display(plt)
 savefig(plt, "examples/figures/bsa_set.png")
 
 end # module

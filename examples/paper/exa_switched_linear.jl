@@ -31,8 +31,9 @@ flow2 = [
 ]
 display(flow2)
 dom2 = @set x[1] ≤ 0
+xc = zeros(2)
 rad = 1
-dom_init = @set x' * x ≤ rad^2
+dom_init = @set (x - xc)' * (x - xc) ≤ rad^2
 guard12 = @set x[2] == 0 && x[1] ≥ 0
 guard21 = @set x[2] == 0 && x[1] ≤ 0
 
@@ -40,7 +41,8 @@ xlims = (-3.5, 3.5)
 ylims = (-3.5, 3.5)
 plt = plot(xlabel=L"x_1", ylabel=L"x_2",
            aspect_ratio=:equal,
-           xlims=xlims .* 1.1, ylims=ylims .* 1.1)
+           xlims=xlims .* 1.1, ylims=ylims .* 1.1,
+           dpi=400)
 
 x1s_ = range(xlims..., length=15)
 x2s_ = range(ylims..., length=15)
@@ -57,9 +59,9 @@ function compute_flow(x)
 end
 dxs = [[f(var=>x) for f in compute_flow(x)] for x in xs]
 nx = maximum(dx -> norm(dx), dxs)
-dxs1 = getindex.(dxs, 1) * 0.4 / nx
-dxs2 = getindex.(dxs, 2) * 0.4 / nx
-quiver!(x1s, x2s, quiver=(dxs1, dxs2))
+dxs1 = getindex.(dxs, 1) * 0.5 / nx
+dxs2 = getindex.(dxs, 2) * 0.5 / nx
+quiver!(x1s, x2s, quiver=(dxs1, dxs2), arrow=:closed)
 
 x1s_ = range(xlims..., length=500)
 x2s_ = range(ylims..., length=500)
@@ -85,18 +87,14 @@ for _ = 1:30
     plot!(sol[1, :], sol[2, :], label="")
 end
 
+#-------------------------------------------------------------------------------
+
 nstep = 50
 dt = 0.25
 np = 20
 
-vals1 = generate_vals_on_ball(np, rad, dt, nstep, var, flow1)
-vals2 = generate_vals_on_ball(np, rad, dt, nstep, var, flow2)
-
-# for vals in (vals1, vals2)
-#     scatter!(plt, getindex.(vals, 1), getindex.(vals, 2), label="", ms=1)
-# end
-
-display(plt)
+vals1 = generate_vals_on_ball(np, xc, rad, dt, nstep, var, flow1)
+vals2 = generate_vals_on_ball(np, xc, rad, dt, nstep, var, flow2)
 
 include("../../src/InvariancePolynomial.jl")
 const MP = InvariancePolynomial.Projection
@@ -119,11 +117,10 @@ display(length(vc.rays))
 flag = @time MP.narrow_vcone!(vc, dom_init, F, λ, ϵ, δ, Inf, solver,
                               callback_func=callback_func,
                               dom_inv=dom1)
-display(flag)
-display(vc.funcs)
-display(vc.rays)
+@assert flag
+display(length(vc.rays))
 MP.simplify_vcone!(vc, 1e-5, solver, delete=false)
-display(vc.rays)
+display(length(vc.rays))
 vc1 = vc
 
 # ------------------------------------------------------------------------------
@@ -141,14 +138,14 @@ display(length(vc.rays))
 flag = @time MP.narrow_vcone!(vc, dom_init, F, λ, ϵ, δ, Inf, solver,
                               callback_func=callback_func,
                               dom_inv=dom2)
-display(flag)
-display(vc.funcs)
-display(vc.rays)
+@assert flag
+display(length(vc.rays))
 MP.simplify_vcone!(vc, 1e-5, solver, delete=false)
-display(vc.rays)
+display(length(vc.rays))
 vc2 = vc
 
 # ------------------------------------------------------------------------------
+
 function compute_vc(x)
     if is_in(dom1, var, x)
         return vc1
@@ -168,17 +165,50 @@ z = @. Fplot_vc(x1s_', x2s_)
 display(minimum(z))
 contour!(x1s_, x2s_, z, levels=[0], color=:green, lw=2)
 
-display(plt)
 savefig(plt, "examples/figures/switched_linear.png")
 
-vc = vc2
+# ------------------------------------------------------------------------------
 
-@polyvar x1 x2
 file = open(string(@__DIR__, "/output.txt"), "w")
-println(file, "Barriers")
-for r in vc.rays
-    p = dot(vc.funcs, r.a)
-    println(file, p(var=>[x1, x2]), ",")
+@polyvar x0 x1
+println(file, "Flow 1")
+for f in flow1
+    str = string(f(var=>[x0, x1]), ",")
+    str = replace(str, "^"=>"**")
+    println(file, str)
+end
+println(file, "Flow 2")
+for f in flow2
+    str = string(f(var=>[x0, x1]), ",")
+    str = replace(str, "^"=>"**")
+    println(file, str)
+end
+println(file, "Barriers python 1")
+for r in vc1.rays
+    p = dot(vc1.funcs, r.a)
+    str = string(p(var=>[x0, x1]), ",")
+    str = replace(str, "^"=>"**")
+    println(file, str)
+end
+println(file, "Barriers python 2")
+for r in vc2.rays
+    p = dot(vc2.funcs, r.a)
+    str = string(p(var=>[x0, x1]), ",")
+    str = replace(str, "^"=>"**")
+    println(file, str)
+end
+@polyvar x1 x2
+println(file, "Barriers latex 1")
+for r in vc1.rays
+    p = dot(vc1.funcs, r.a)
+    str = string(p(var=>[x1, x2]), ",")
+    println(file, str)
+end
+println(file, "Barriers latex 2")
+for r in vc2.rays
+    p = dot(vc2.funcs, r.a)
+    str = string(p(var=>[x1, x2]), ",")
+    println(file, str)
 end
 close(file)
 
