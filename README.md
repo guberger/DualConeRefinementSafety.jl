@@ -1,1 +1,1 @@
-# InvariancePolynomial
+# InvariancePolynomial.jl
