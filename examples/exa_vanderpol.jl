@@ -11,7 +11,7 @@ using CDDLib
 using SumOfSquares
 using MosekTools
 
-include("../utils.jl")
+include("utils.jl")
 
 var, = @polyvar x[1:2]
 μ = 0.5
@@ -74,32 +74,32 @@ dt = 0.25
 np = 20
 vals = generate_vals_on_ball(np, xc, rad, dt, nstep, var, flow)
 
-include("../../src/InvariancePolynomial.jl")
-const MP = InvariancePolynomial.Projection
+include("../src/main.jl")
+const TK = ToolKit
 
-F = MP.Field(var, flow)
-points = [MP.Point(var, val) for val in vals]
+F = TK.Field(var, flow)
+points = [TK.Point(var, val) for val in vals]
 funcs = [1, x[1]^2, x[1]*x[2], x[2]^2]
 λ = 1.0
 ϵ = 1e-1
-hc = MP.hcone_from_points(funcs, F, λ, ϵ, points)
+hc = TK.hcone_from_points(funcs, F, λ, ϵ, points)
 display(length(hc.halfspaces))
 
-vc = MP.vcone_from_hcone(hc, () -> CDDLib.Library())
+vc = TK.vcone_from_hcone(hc, () -> CDDLib.Library())
 display(length(vc.rays))
 
 vc_list = typeof(vc)[]
 function record_func(vc)
-    push!(vc_list, MP.VConeSubset(vc.funcs, copy(vc.rays)))
+    push!(vc_list, TK.VConeSubset(vc.funcs, copy(vc.rays)))
 end
 
 δ = 1e-9
-flag = @time MP.narrow_vcone!(vc, dom_init, F, λ, ϵ, δ, Inf, solver,
+flag = @time TK.narrow_vcone!(vc, dom_init, F, λ, ϵ, δ, Inf, solver,
                               callback_func=callback_func,
                               record_func=record_func)
 @assert flag
 display(length(vc.rays))
-MP.simplify_vcone!(vc, 1e-9, solver)
+TK.simplify_vcone!(vc, 1e-9, solver)
 display(length(vc.rays))
 
 #-------------------------------------------------------------------------------
@@ -192,7 +192,7 @@ contourf!(x1s_, x2s_, z, levels=[0, 100],
 # colors = [:red, :blue, :green, :yellow, :black,
 #           :gray, :purple, :brown, :pink, :magenta]
 # for (i, r) in enumerate(vc.rays)
-#     vc_curr = MP.VConeSubset(vc.funcs, [r])
+#     vc_curr = TK.VConeSubset(vc.funcs, [r])
 #     z = @. Fplot_vc((vc_curr,), x1s_', x2s_)
 #     contour!(plt, x1s_, x2s_, z, levels=[0], c=colors[i], lw=2)
 # end
@@ -200,7 +200,7 @@ contourf!(x1s_, x2s_, z, levels=[0, 100],
 z = @. Fplot_vc((vc,), x1s_', x2s_)
 contour!(plt, x1s_, x2s_, z, levels=[0], c=:green, lw=2)
 
-vc_bis = MP.VConeSubset(vc.funcs, vc.rays[[1, 3, 6]])
+vc_bis = TK.VConeSubset(vc.funcs, vc.rays[[1, 3, 6]])
 z = @. Fplot_vc((vc_bis,), x1s_', x2s_)
 contour!(plt, x1s_, x2s_, z, levels=[0], c=:purple, lw=2)
 

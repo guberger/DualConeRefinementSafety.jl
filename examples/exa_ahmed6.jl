@@ -14,7 +14,7 @@ using CDDLib
 using SumOfSquares
 using MosekTools
 
-include("../utils.jl")
+include("utils.jl")
 
 var, = @polyvar x[1:2]
 flow = [
@@ -59,29 +59,29 @@ np = 20
 rad = 0.5
 vals = generate_vals_on_ball(np, xc, rad, dt, nstep, var, flow)
 
-include("../../src/InvariancePolynomial.jl")
-const MP = InvariancePolynomial.Projection
+include("../src/main.jl")
+const TK = ToolKit
 
-F = MP.Field(var, flow)
-points = [MP.Point(var, val) for val in vals]
+F = TK.Field(var, flow)
+points = [TK.Point(var, val) for val in vals]
 λ = 1.0
 ϵ = 1e-1
 
 #-------------------------------------------------------------------------------
 
 funcs = [1, x[1], x[2]]
-hc = MP.hcone_from_points(funcs, F, λ, ϵ, points)
+hc = TK.hcone_from_points(funcs, F, λ, ϵ, points)
 display(length(hc.halfspaces))
 
-vc = MP.vcone_from_hcone(hc, () -> CDDLib.Library())
+vc = TK.vcone_from_hcone(hc, () -> CDDLib.Library())
 display(length(vc.rays))
 
 δ = 1e-8
-flag = @time MP.narrow_vcone!(vc, dom_init, F, λ, ϵ, δ, Inf, solver,
+flag = @time TK.narrow_vcone!(vc, dom_init, F, λ, ϵ, δ, Inf, solver,
                               callback_func=callback_func)
 @assert flag
 display(length(vc.rays))
-MP.simplify_vcone!(vc, 1e-5, solver, delete=false)
+TK.simplify_vcone!(vc, 1e-5, solver, delete=false)
 display(length(vc.rays))
 
 Fplot_vc(x1, x2) = begin
@@ -94,18 +94,18 @@ contour!(x1s_, x2s_, z, levels=[0], color=:green, lw=2)
 #-------------------------------------------------------------------------------
 
 funcs = [1, x[1]^2, x[1]*x[2], x[2]^2]
-hc = MP.hcone_from_points(funcs, F, λ, ϵ, points)
+hc = TK.hcone_from_points(funcs, F, λ, ϵ, points)
 display(length(hc.halfspaces))
 
-vc = MP.vcone_from_hcone(hc, () -> CDDLib.Library())
+vc = TK.vcone_from_hcone(hc, () -> CDDLib.Library())
 display(length(vc.rays))
 
 δ = 1e-8
-flag = @time MP.narrow_vcone!(vc, dom_init, F, λ, ϵ, δ, Inf, solver,
+flag = @time TK.narrow_vcone!(vc, dom_init, F, λ, ϵ, δ, Inf, solver,
                               callback_func=callback_func)
 @assert flag
 display(length(vc.rays))
-MP.simplify_vcone!(vc, 1e-5, solver, delete=false)
+TK.simplify_vcone!(vc, 1e-5, solver, delete=false)
 display(length(vc.rays))
 
 z = @. Fplot_vc(x1s_', x2s_)

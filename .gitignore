@@ -25,3 +25,4 @@ Manifest.toml
 
 figures/
 examples/output.txt
+.venv

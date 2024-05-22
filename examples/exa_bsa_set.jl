@@ -5,8 +5,8 @@ using DynamicPolynomials
 using SumOfSquares
 using Plots
 
-include("../../src/InvariancePolynomial.jl")
-const MP = InvariancePolynomial.Projection
+include("../src/main.jl")
+const TK = ToolKit
 
 var, = @polyvar x[1:2]
 funcs = [1, x[1]^2, x[1]*x[2], x[2]^2]
